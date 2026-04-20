@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2e7d32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Betrieb">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Betriebsapp Mobile</title>
+<style>
+:root{
+  --green:#2e7d32; --green-d:#1b5e20; --green-l:#e8f5e9;
+  --blue:#1976d2; --blue-l:#e3f2fd;
+  --orange:#ef6c00; --orange-l:#fff3e0;
+  --red:#c62828; --red-l:#ffebee;
+  --gray:#f5f5f5; --border:#e0e0e0; --text:#212121; --text2:#666;
+  --shadow:0 2px 8px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:16px; color:var(--text); background:#fafafa;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+
+/* Header */
+.hdr{
+  background:linear-gradient(135deg,var(--green),var(--green-d));
+  color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:10;flex-shrink:0;
+}
+.hdr h1{margin:0;font-size:18px;font-weight:600}
+.hdr .status-dot{width:10px;height:10px;border-radius:50%;background:#f44336;display:inline-block;margin-right:8px}
+.hdr .status-dot.ok{background:#66bb6a}
+
+/* Main content */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:12px}
+.screen{display:none;animation:fadeIn .15s ease}
+.screen.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* Bottom tab bar */
+.tabs{
+  display:flex;background:#fff;border-top:1px solid var(--border);
+  padding:6px 0 calc(6px + env(safe-area-inset-bottom));flex-shrink:0;
+}
+.tab{
+  flex:1;text-align:center;padding:8px 4px;background:none;border:0;color:var(--text2);
+  font-size:11px;cursor:pointer;-webkit-appearance:none;
+}
+.tab .ico{font-size:22px;display:block;margin-bottom:2px;line-height:1}
+.tab.active{color:var(--green);font-weight:600}
+
+/* Cards & items */
+.card{background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow)}
+.list-item{
+  background:#fff;border-radius:10px;padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow);
+  display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;
+  transition:background .1s;
+}
+.list-item:active{background:var(--gray)}
+.list-item .main{flex:1;min-width:0}
+.list-item .name{font-weight:600;font-size:15px;margin-bottom:2px}
+.list-item .sub{color:var(--text2);font-size:13px}
+.list-item .arr{color:#bbb;font-size:20px;flex-shrink:0}
+
+/* Badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-green{background:var(--green-l);color:var(--green)}
+.b-blue{background:var(--blue-l);color:var(--blue)}
+.b-orange{background:var(--orange-l);color:var(--orange)}
+.b-red{background:var(--red-l);color:var(--red)}
+.b-gray{background:var(--gray);color:var(--text2)}
+
+/* Forms */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13px;color:var(--text2);margin-bottom:4px;font-weight:500}
+.field input,.field select,.field textarea{
+  width:100%;padding:12px;font-size:16px;border:1px solid var(--border);
+  border-radius:8px;background:#fff;color:var(--text);
+  -webkit-appearance:none;appearance:none;
+}
+.field textarea{min-height:80px;resize:vertical}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--green)}
+.field select{background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%23666' d='M3 4l3 3 3-3z'/></svg>") no-repeat right 12px center}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:13px 18px;border:0;border-radius:8px;font-size:15px;font-weight:600;
+  cursor:pointer;-webkit-appearance:none;min-height:48px;
+}
+.btn-primary{background:var(--green);color:#fff}
+.btn-primary:active{background:var(--green-d)}
+.btn-blue{background:var(--blue);color:#fff}
+.btn-outline{background:#fff;color:var(--text);border:1px solid var(--border)}
+.btn-outline:active{background:var(--gray)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-wide{width:100%}
+.btn-row{display:flex;gap:8px;margin-top:12px}
+.btn-row .btn{flex:1}
+
+/* FAB */
+.fab{
+  position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));right:16px;
+  width:56px;height:56px;border-radius:50%;background:var(--green);color:#fff;
+  border:0;font-size:28px;font-weight:300;box-shadow:0 4px 12px rgba(0,0,0,.25);
+  cursor:pointer;z-index:5;display:flex;align-items:center;justify-content:center;
+}
+.fab:active{background:var(--green-d)}
+
+/* Search */
+.search-bar{
+  background:#fff;border-radius:10px;padding:4px 10px;margin-bottom:10px;
+  display:flex;align-items:center;box-shadow:var(--shadow);
+}
+.search-bar input{
+  flex:1;border:0;padding:10px 6px;font-size:15px;outline:none;background:transparent;
+}
+
+/* Filter chips */
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex-shrink:0;padding:7px 14px;background:#fff;border:1px solid var(--border);
+  border-radius:16px;font-size:13px;cursor:pointer;white-space:nowrap;
+}
+.chip.active{background:var(--green);color:#fff;border-color:var(--green)}
+
+/* Toast */
+.toast{
+  position:fixed;top:calc(60px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.85);color:#fff;padding:10px 20px;border-radius:24px;
+  font-size:14px;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;
+  max-width:90%;text-align:center;
+}
+.toast.show{opacity:1}
+
+/* Modal */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:none;
+  align-items:flex-end;justify-content:center;
+}
+.modal-bg.show{display:flex;animation:fadeIn .15s}
+.modal{
+  background:#fff;width:100%;max-width:560px;border-radius:16px 16px 0 0;
+  padding:16px;max-height:90vh;overflow-y:auto;
+  padding-bottom:calc(16px + env(safe-area-inset-bottom));
+  animation:slideUp .2s ease;
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:none}}
+.modal h2{margin:0 0 12px;font-size:18px}
+
+/* Welcome / first run */
+.welcome{padding:24px 16px;text-align:center}
+.welcome h1{color:var(--green);margin:12px 0 8px}
+.welcome p{color:var(--text2);margin:0 0 16px}
+
+/* Event list in Kalender */
+.event{
+  background:#fff;border-left:4px solid var(--green);border-radius:8px;
+  padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow);
+}
+.event.k-red{border-left-color:var(--red)}
+.event.k-blue{border-left-color:var(--blue)}
+.event.k-orange{border-left-color:var(--orange)}
+.event .ev-date{font-size:12px;color:var(--text2);margin-bottom:2px}
+.event .ev-title{font-weight:600;font-size:14px}
+.event .ev-sub{color:var(--text2);font-size:13px;margin-top:2px}
+.date-hdr{
+  font-size:13px;font-weight:600;color:var(--text2);
+  margin:14px 0 6px;text-transform:uppercase;letter-spacing:.5px;
+}
+
+.empty{text-align:center;padding:40px 20px;color:var(--text2)}
+.empty .ico{font-size:48px;display:block;margin-bottom:8px;opacity:.4}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Header -->
+  <div class="hdr">
+    <div style="display:flex;align-items:center">
+      <span class="status-dot" id="statusDot"></span>
+      <h1 id="screenTitle">Betriebsapp</h1>
+    </div>
+    <button class="btn btn-outline" style="padding:6px 10px;min-height:36px;font-size:12px;color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3)" onclick="syncNow()">⟳</button>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="content">
+
+    <!-- WELCOME (first run) -->
+    <div class="screen" id="sc-welcome">
+      <div class="welcome">
+        <div style="font-size:64px">🌾</div>
+        <h1>Willkommen</h1>
+        <p>Zum Start musst du einmal deinen Sync-PIN eingeben. Danach werden alle Daten automatisch synchronisiert.</p>
+        <button class="btn btn-primary btn-wide" onclick="setPinInteractive()">🔑 PIN eingeben</button>
+      </div>
+    </div>
+
+    <!-- TIERE -->
+    <div class="screen" id="sc-tiere">
+      <div class="search-bar">
+        <span style="color:#bbb;padding-left:6px">🔍</span>
+        <input type="text" id="tiereSearch" placeholder="Suche nach Name oder TVD..." oninput="renderTiere()">
+      </div>
+      <div class="chips" id="tiereChips"></div>
+      <div id="tiereList"></div>
+    </div>
+
+    <!-- WIESEN -->
+    <div class="screen" id="sc-wiesen">
+      <div class="search-bar">
+        <span style="color:#bbb;padding-left:6px">🔍</span>
+        <input type="text" id="wiesenSearch" placeholder="Suche Feld..." oninput="renderWiesen()">
+      </div>
+      <div id="wiesenList"></div>
+    </div>
+
+    <!-- KALENDER -->
+    <div class="screen" id="sc-kalender">
+      <div class="chips" id="kalChips"></div>
+      <div id="kalList"></div>
+    </div>
+
+    <!-- MEHR / EINSTELLUNGEN -->
+    <div class="screen" id="sc-mehr">
+      <div class="card">
+        <h2 style="margin:0 0 4px">☁️ Cloud-Sync</h2>
+        <div id="syncInfo" style="color:var(--text2);font-size:13px;margin-bottom:12px"></div>
+        <button class="btn btn-primary btn-wide" onclick="syncNow()" style="margin-bottom:8px">⟳ Jetzt synchronisieren</button>
+        <button class="btn btn-outline btn-wide" onclick="setPinInteractive()">🔑 PIN ändern</button>
+      </div>
+      <div class="card">
+        <h2 style="margin:0 0 8px">ℹ️ Info</h2>
+        <p style="color:var(--text2);font-size:13px;margin:0">
+          Diese App greift nur auf <strong>Tiere, Wiesen und Kalender</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
+        </p>
+        <p style="color:var(--text2);font-size:12px;margin:8px 0 0">
+          Letzter Sync: <span id="lastSyncAt">nie</span>
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom tabs -->
+  <div class="tabs">
+    <button class="tab active" data-screen="tiere" onclick="switchScreen('tiere')"><span class="ico">🐄</span>Tiere</button>
+    <button class="tab" data-screen="wiesen" onclick="switchScreen('wiesen')"><span class="ico">🌾</span>Wiesen</button>
+    <button class="tab" data-screen="kalender" onclick="switchScreen('kalender')"><span class="ico">📅</span>Kalender</button>
+    <button class="tab" data-screen="mehr" onclick="switchScreen('mehr')"><span class="ico">⚙️</span>Mehr</button>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab" onclick="fabAction()" style="display:none">+</button>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Modal -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+/* ===================================================================
+   KONFIG — gleiche Supabase-Verbindung wie die PC-App
+=================================================================== */
+const SUPABASE_URL = 'https://glfcazurctiyxmrvbjdy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_jsQr_GTzKE4jnPEQzEGqmQ_0IQhuTy3';
+const SYNC_ALLOWED = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings'];
+
+/* ===================================================================
+   STATE
+=================================================================== */
+let data = {
+  tiere:[], besamungen:[], behandlungen:[], schlachtungen:[],
+  felder:[], journal:[], wiesenSettings:null
+};
+let currentScreen = 'tiere';
+let tiereFilter = 'alle';
+let kalFilter = 'alle';
+
+/* ===================================================================
+   HELPER
+=================================================================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const deCH = d => { if(!d) return ''; const x = new Date(d); if(isNaN(x)) return d; return x.toLocaleDateString('de-CH'); };
+const toISO = d => { if(!d) return ''; if(/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0,10); const x = new Date(d); return isNaN(x)?'':x.toISOString().slice(0,10); };
+const ageDays = d => { if(!d) return null; const x = new Date(d); if(isNaN(x)) return null; return Math.floor((Date.now()-x.getTime())/86400000); };
+const normTvd = t => String(t||'').replace(/\D/g,'');
+
+function toast(msg){
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+function openModal(html){
+  $('#modalContent').innerHTML = html;
+  $('#modalBg').classList.add('show');
+}
+function closeModal(){ $('#modalBg').classList.remove('show'); }
+
+/* ===================================================================
+   SCREEN NAVIGATION
+=================================================================== */
+function switchScreen(name){
+  currentScreen = name;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const scEl = $('#sc-'+name);
+  if(scEl) scEl.classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.screen===name));
+  const titles = {tiere:'Tiere', wiesen:'Wiesen', kalender:'Kalender', mehr:'Mehr'};
+  $('#screenTitle').textContent = titles[name] || 'Betriebsapp';
+  // FAB nur wo sinnvoll
+  const fab = $('#fab');
+  if(name==='tiere' || name==='wiesen') fab.style.display='flex';
+  else fab.style.display='none';
+  // Render
+  if(name==='tiere') renderTiere();
+  if(name==='wiesen') renderWiesen();
+  if(name==='kalender') renderKalender();
+  if(name==='mehr') renderMehr();
+}
+
+function fabAction(){
+  if(currentScreen==='tiere') showBesamungForm();
+  else if(currentScreen==='wiesen') showJournalForm();
+}
+
+/* ===================================================================
+   LOCAL STORAGE (Offline-Cache der Cloud-Daten)
+=================================================================== */
+function loadLocal(){
+  try {
+    const raw = localStorage.getItem('betriebsapp_mobile');
+    if(raw) data = Object.assign(data, JSON.parse(raw));
+  } catch(e){}
+}
+function saveLocal(){
+  try { localStorage.setItem('betriebsapp_mobile', JSON.stringify(data)); } catch(e){}
+}
+
+/* ===================================================================
+   PIN / CLOUD
+=================================================================== */
+function getPin(){ return localStorage.getItem('betriebsapp_sync_pin') || ''; }
+function setPin(p){
+  if(!p) localStorage.removeItem('betriebsapp_sync_pin');
+  else localStorage.setItem('betriebsapp_sync_pin', p);
+}
+
+function setPinInteractive(){
+  const p = prompt('Sync-PIN eingeben:', getPin());
+  if(p===null) return;
+  setPin(p.trim());
+  toast('PIN gespeichert');
+  syncNow();
+}
+
+async function cloudFetch(path, options){
+  options = options || {};
+  const pin = getPin();
+  if(!pin) throw new Error('Kein PIN');
+  const headers = Object.assign({
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'x-access-pin': pin,
+    'Content-Type': 'application/json'
+  }, options.headers||{});
+  return fetch(SUPABASE_URL + '/rest/v1/' + path, Object.assign({}, options, {headers}));
+}
+
+async function cloudPull(){
+  const r = await cloudFetch('betriebsapp_data?select=*');
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const rows = await r.json();
+  rows.forEach(row => {
+    if(SYNC_ALLOWED.includes(row.id)) data[row.id] = row.payload;
+  });
+  saveLocal();
+}
+
+async function cloudPushKey(key){
+  if(!SYNC_ALLOWED.includes(key)) throw new Error('Key nicht erlaubt: '+key);
+  const payload = key==='wiesenSettings' ? (data[key]||null) : (data[key]||[]);
+  const r = await cloudFetch('betriebsapp_data', {
+    method:'POST',
+    headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify([{id:key, payload, updated_by:'mobile'}])
+  });
+  if(!r.ok){ const t = await r.text(); throw new Error('HTTP '+r.status+': '+t); }
+}
+
+async function cloudPushAll(){
+  for(const k of SYNC_ALLOWED) await cloudPushKey(k);
+}
+
+let syncInFlight = false;
+async function syncNow(){
+  if(!getPin()){ setPinInteractive(); return; }
+  if(syncInFlight) return;
+  syncInFlight = true;
+  setStatus(false, 'sync...');
+  try {
+    await cloudPull();
+    localStorage.setItem('lastSync', new Date().toISOString());
+    setStatus(true, 'OK');
+    toast('☁️ synchronisiert');
+    if(currentScreen==='tiere') renderTiere();
+    else if(currentScreen==='wiesen') renderWiesen();
+    else if(currentScreen==='kalender') renderKalender();
+    else if(currentScreen==='mehr') renderMehr();
+  } catch(e){
+    setStatus(false, e.message);
+    toast('Sync fehlgeschlagen: '+e.message);
+  } finally {
+    syncInFlight = false;
+  }
+}
+
+function setStatus(ok, msg){
+  $('#statusDot').classList.toggle('ok', !!ok);
+}
+
+/* ===================================================================
+   KATEGORIE-LOGIK (aus Haupt-App übernommen)
+=================================================================== */
+function gveKategorie(tier){
+  if(tier.kategorie && tier.kategorie!=='auto') return tier.kategorie;
+  if(tier.erstkalbe) return 'Kuh';
+  const age = ageDays(tier.gebDatum);
+  if(age==null) return 'Kuh';
+  if(age>425) return 'Rind';
+  return 'Kalb';
+}
+function aktiveTiere(){ return data.tiere.filter(t=>!t.abgang); }
+function findTier(tvd){ const n=normTvd(tvd); return data.tiere.find(t=>normTvd(t.tvd)===n); }
+function hatKalb(kuhTvd){
+  const n = normTvd(kuhTvd);
+  return data.tiere.some(k=>normTvd(k.mutterTvd)===n && gveKategorie(k)==='Kalb' && !k.abgang);
+}
+function stripAlpPlus(a){ return a==='Portein+'?'Portein':a==='Sarn+'?'Sarn':a==='Merla+'?'Merla':a||''; }
+function addAlpPlus(a){ return a==='Portein'?'Portein+':a==='Sarn'?'Sarn+':a==='Merla'?'Merla+':a||''; }
+function updateAlpKalbStatus(kuhTvd){
+  const t = findTier(kuhTvd);
+  if(!t || !t.alp || gveKategorie(t)==='Kalb') return;
+  const basis = stripAlpPlus(t.alp);
+  t.alp = hatKalb(kuhTvd) ? addAlpPlus(basis) : basis;
+}
+
+function alpBadge(alp){
+  if(!alp) return '';
+  const short = {'Portein+':'P+','Sarn+':'S+','Merla+':'M+','Portein':'P','Sarn':'S','Merla':'M','Portein-':'P-'}[alp]||alp;
+  const cls = alp.startsWith('Sarn')?'b-blue':alp.startsWith('Portein')?'b-green':alp.startsWith('Merla')?'b-orange':'b-gray';
+  return '<span class="badge '+cls+'">'+esc(short)+'</span>';
+}
+
+/* ===================================================================
+   RENDER: TIERE
+=================================================================== */
+function renderTiere(){
+  // Filter chips
+  const chipsHtml = [
+    {k:'alle', l:'Alle'},
+    {k:'kuh', l:'Kühe'},
+    {k:'rind', l:'Rinder'},
+    {k:'kalb', l:'Kälber'},
+    {k:'sarn', l:'Sarn'},
+    {k:'portein', l:'Portein'},
+    {k:'merla', l:'Merla'}
+  ].map(c => '<button class="chip'+(tiereFilter===c.k?' active':'')+'" onclick="setTiereFilter(\''+c.k+'\')">'+c.l+'</button>').join('');
+  $('#tiereChips').innerHTML = chipsHtml;
+
+  const q = ($('#tiereSearch').value||'').toLowerCase();
+  let list = aktiveTiere();
+
+  // Filter
+  if(tiereFilter==='kuh') list = list.filter(t=>gveKategorie(t)==='Kuh');
+  else if(tiereFilter==='rind') list = list.filter(t=>gveKategorie(t)==='Rind');
+  else if(tiereFilter==='kalb') list = list.filter(t=>gveKategorie(t)==='Kalb');
+  else if(tiereFilter==='sarn') list = list.filter(t=>(t.alp||'').startsWith('Sarn'));
+  else if(tiereFilter==='portein') list = list.filter(t=>(t.alp||'').startsWith('Portein'));
+  else if(tiereFilter==='merla') list = list.filter(t=>(t.alp||'').startsWith('Merla'));
+
+  if(q) list = list.filter(t =>
+    (t.name||'').toLowerCase().includes(q) ||
+    (t.tvd||'').includes(q) ||
+    (t.gruppe||'').toLowerCase().includes(q)
+  );
+
+  list.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  if(!list.length){
+    $('#tiereList').innerHTML = '<div class="empty"><span class="ico">🐄</span>Keine Tiere gefunden.</div>';
+    return;
+  }
+
+  $('#tiereList').innerHTML = list.map((t,i) => {
+    const kat = gveKategorie(t);
+    const katBadge = kat==='Kuh'?'<span class="badge b-green">Kuh</span>':kat==='Rind'?'<span class="badge b-blue">Rind</span>':'<span class="badge b-orange">Kalb</span>';
+    const age = ageDays(t.gebDatum);
+    const ageStr = age!=null ? (age<365 ? age+' T' : Math.floor(age/365)+' J '+Math.floor((age%365)/30)+' M') : '';
+    const idx = data.tiere.indexOf(t);
+    return '<div class="list-item" onclick="showTierDetail('+idx+')">'+
+      '<div class="main">'+
+        '<div class="name">'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</div>'+
+        '<div class="sub">'+esc(t.tvd||'')+' · '+katBadge+' · '+esc(t.gruppe||'-')+' · '+ageStr+'</div>'+
+      '</div>'+
+      '<div class="arr">›</div>'+
+    '</div>';
+  }).join('');
+}
+function setTiereFilter(f){ tiereFilter = f; renderTiere(); }
+
+/* ===================================================================
+   TIER-DETAIL
+=================================================================== */
+function showTierDetail(idx){
+  const t = data.tiere[idx];
+  if(!t) return;
+  const kat = gveKategorie(t);
+  const age = ageDays(t.gebDatum);
+  const besas = data.besamungen.filter(b=>normTvd(b.tvd)===normTvd(t.tvd)).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  const besaHtml = besas.length ? besas.slice(0,5).map(b =>
+    '<div style="border-left:3px solid '+(b.nurBrunst?'var(--orange)':'var(--blue)')+';padding:6px 10px;margin-bottom:6px;background:var(--gray);border-radius:4px;">'+
+    '<div style="font-size:13px;font-weight:600">'+deCH(b.datum)+(b.nurBrunst?' – 🔴 Brunst':' – '+esc(b.stier||'?'))+'</div>'+
+    (b.tuResult?'<div style="font-size:12px;color:var(--text2)">TU: '+esc(b.tuResult)+'</div>':'')+
+    (b.kalbetermin?'<div style="font-size:12px;color:var(--text2)">Kalbe: '+deCH(b.kalbetermin)+'</div>':'')+
+    '</div>'
+  ).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge</div>';
+
+  const alpOptions = ['','Portein+','Sarn+','Merla+','Portein','Sarn','Merla','Portein-']
+    .map(a => '<option value="'+a+'"'+(t.alp===a?' selected':'')+'>'+(a||'—')+'</option>').join('');
+  const gruppeOptions = ['','A','B','C','D']
+    .map(g => '<option value="'+g+'"'+(t.gruppe===g?' selected':'')+'>'+(g||'—')+'</option>').join('');
+
+  openModal(
+    '<h2>'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</h2>'+
+    '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">'+
+      'TVD: '+esc(t.tvd)+' · '+esc(kat)+' · '+(age!=null?age+' Tage':'—')+
+    '</div>'+
+    '<div class="field"><label>Alp</label><select id="tdAlp">'+alpOptions+'</select></div>'+
+    '<div class="field"><label>Gruppe</label><select id="tdGruppe">'+gruppeOptions+'</select></div>'+
+    '<div class="field"><label>Bemerkungen</label><textarea id="tdBem">'+esc(t.bemerkungen||'')+'</textarea></div>'+
+    '<div class="btn-row">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+      '<button class="btn btn-primary" onclick="saveTierDetail('+idx+')">Speichern</button>'+
+    '</div>'+
+    '<h2 style="margin-top:20px">Letzte Besamungen/Brunst</h2>'+
+    besaHtml+
+    '<button class="btn btn-blue btn-wide" style="margin-top:10px" onclick="closeModal();showBesamungForm('+idx+')">+ Besamung / Brunst erfassen</button>'
+  );
+}
+
+async function saveTierDetail(idx){
+  const t = data.tiere[idx];
+  if(!t) return;
+  t.alp = $('#tdAlp').value;
+  t.gruppe = $('#tdGruppe').value;
+  t.bemerkungen = $('#tdBem').value;
+  // Automatisch +/- je nach Kalb
+  updateAlpKalbStatus(t.tvd);
+  saveLocal();
+  closeModal();
+  renderTiere();
+  toast('Speichere zu Cloud...');
+  try { await cloudPushKey('tiere'); toast('☁️ gespeichert'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+/* ===================================================================
+   BESAMUNG / BRUNST FORM
+=================================================================== */
+function showBesamungForm(tierIdx){
+  const heute = new Date().toISOString().slice(0,10);
+  const kuehe = aktiveTiere().filter(t=>(t.geschlecht||'').toLowerCase().includes('weib') || gveKategorie(t)!=='Kalb');
+  const preTvd = tierIdx!=null && data.tiere[tierIdx] ? data.tiere[tierIdx].tvd : '';
+  const kuhOpts = '<option value="">— Kuh wählen —</option>' +
+    kuehe.map(t=>'<option value="'+esc(t.tvd)+'"'+(t.tvd===preTvd?' selected':'')+'>'+esc(t.name||t.tvd)+' ('+esc(t.tvd)+')</option>').join('');
+
+  openModal(
+    '<h2>🐄 Besamung / Brunst erfassen</h2>'+
+    '<div class="field"><label>Kuh</label><select id="bfKuh">'+kuhOpts+'</select></div>'+
+    '<div class="field"><label>Datum</label><input type="date" id="bfDatum" value="'+heute+'"></div>'+
+    '<div class="field"><label>Stier (leer = nur Brunst)</label><input type="text" id="bfStier" placeholder="Stiername oder leer"></div>'+
+    '<div class="field"><label>Bemerkungen</label><input type="text" id="bfBem"></div>'+
+    '<div class="btn-row">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+      '<button class="btn btn-primary" onclick="saveBesamung()">Speichern</button>'+
+    '</div>'
+  );
+}
+
+async function saveBesamung(){
+  const tvd = $('#bfKuh').value;
+  const datum = $('#bfDatum').value;
+  const stier = $('#bfStier').value.trim();
+  if(!tvd){ alert('Kuh wählen!'); return; }
+  if(!datum){ alert('Datum eingeben!'); return; }
+  const tier = findTier(tvd);
+  const b = {
+    tvd, kuhName: tier?tier.name:'',
+    datum, stier,
+    tuDatum:'', tuResult:'',
+    kalbetermin: stier ? addDays(datum, 283) : '',
+    bemerkungen: $('#bfBem').value,
+    nurBrunst: !stier
+  };
+  data.besamungen.push(b);
+  saveLocal();
+  closeModal();
+  toast(b.nurBrunst ? 'Brunst erfasst' : 'Besamung erfasst');
+  if(currentScreen==='tiere') renderTiere();
+  try { await cloudPushKey('besamungen'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler: '+e.message); }
+}
+
+function addDays(iso, days){
+  const d = new Date(iso);
+  d.setDate(d.getDate()+days);
+  return d.toISOString().slice(0,10);
+}
+
+/* ===================================================================
+   RENDER: WIESEN
+=================================================================== */
+function renderWiesen(){
+  const q = ($('#wiesenSearch').value||'').toLowerCase();
+  let list = (data.felder||[]);
+  if(q) list = list.filter(f=>((f.name||'')+' '+(f.parzNr||'')).toLowerCase().includes(q));
+  list.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+  if(!list.length){
+    $('#wiesenList').innerHTML = '<div class="empty"><span class="ico">🌾</span>Keine Felder. Erst auf dem PC anlegen und dann synchronisieren.</div>';
+    return;
+  }
+
+  $('#wiesenList').innerHTML = list.map(f => {
+    const lastJ = (data.journal||[]).filter(j=>j.feldId===f.id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''))[0];
+    const lastTxt = lastJ ? deCH(lastJ.datum)+' · '+(lastJ.guelle?lastJ.guelle+'m³G ':'')+(lastJ.mist?lastJ.mist+'m³M':'') : 'kein Journal-Eintrag';
+    return '<div class="list-item" onclick="showFeldDetail(\''+esc(f.id)+'\')">'+
+      '<div class="main">'+
+        '<div class="name">'+esc(f.name||'')+' <span class="badge b-gray">'+esc(f.parzNr||'')+'</span></div>'+
+        '<div class="sub">'+esc(f.flaeche||0)+' a · '+esc(lastTxt)+'</div>'+
+      '</div>'+
+      '<div class="arr">›</div>'+
+    '</div>';
+  }).join('');
+}
+
+function showFeldDetail(id){
+  const f = (data.felder||[]).find(x=>x.id===id);
+  if(!f) return;
+  const eintraege = (data.journal||[]).filter(j=>j.feldId===id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  const listHtml = eintraege.length ? eintraege.slice(0,10).map(j =>
+    '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px">'+
+    '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
+    '<div style="color:var(--text2)">'+
+      (j.guelle?'Gülle '+j.guelle+' m³ · ':'')+
+      (j.mist?'Mist '+j.mist+' m³ · ':'')+
+      (j.bearFlaeche?'Fl. '+j.bearFlaeche+' a · ':'')+
+      esc(j.bemerkung||'')+
+    '</div></div>'
+  ).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge.</div>';
+
+  openModal(
+    '<h2>'+esc(f.name||'')+'</h2>'+
+    '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">'+
+      'Parzelle: '+esc(f.parzNr||'-')+' · '+esc(f.flaeche||0)+' Aren'+
+    '</div>'+
+    '<button class="btn btn-primary btn-wide" onclick="closeModal();showJournalForm(\''+esc(id)+'\')">+ Journal-Eintrag erfassen</button>'+
+    '<h2 style="margin-top:20px">Letzte Einträge</h2>'+
+    listHtml+
+    '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Schliessen</button>'
+  );
+}
+
+function showJournalForm(preFeldId){
+  const heute = new Date().toISOString().slice(0,10);
+  const felder = (data.felder||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const feldOpts = '<option value="">— Feld wählen —</option>' +
+    felder.map(f => '<option value="'+esc(f.id)+'"'+(f.id===preFeldId?' selected':'')+'>'+esc(f.name)+' ('+esc(f.parzNr||'-')+')</option>').join('');
+
+  openModal(
+    '<h2>🌾 Journal-Eintrag</h2>'+
+    '<div class="field"><label>Feld</label><select id="jfFeld">'+feldOpts+'</select></div>'+
+    '<div class="field"><label>Datum</label><input type="date" id="jfDatum" value="'+heute+'"></div>'+
+    '<div class="field"><label>Gülle (m³)</label><input type="number" id="jfGuelle" step="0.1" inputmode="decimal"></div>'+
+    '<div class="field"><label>Mist (m³)</label><input type="number" id="jfMist" step="0.1" inputmode="decimal"></div>'+
+    '<div class="field"><label>Bearbeitete Fläche (Aren)</label><input type="number" id="jfFlaeche" step="0.1" inputmode="decimal"></div>'+
+    '<div class="field"><label>Bemerkung</label><textarea id="jfBem"></textarea></div>'+
+    '<div class="btn-row">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+      '<button class="btn btn-primary" onclick="saveJournal()">Speichern</button>'+
+    '</div>'
+  );
+}
+
+async function saveJournal(){
+  const feldId = $('#jfFeld').value;
+  const datum = $('#jfDatum').value;
+  if(!feldId){ alert('Feld wählen!'); return; }
+  if(!datum){ alert('Datum eingeben!'); return; }
+  const j = {
+    datum, feldId,
+    guelle: parseFloat($('#jfGuelle').value)||0,
+    mist: parseFloat($('#jfMist').value)||0,
+    bearFlaeche: parseFloat($('#jfFlaeche').value)||0,
+    bemerkung: $('#jfBem').value
+  };
+  if(!data.journal) data.journal = [];
+  data.journal.push(j);
+  saveLocal();
+  closeModal();
+  toast('Journal-Eintrag gespeichert');
+  if(currentScreen==='wiesen') renderWiesen();
+  try { await cloudPushKey('journal'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+/* ===================================================================
+   RENDER: KALENDER
+=================================================================== */
+function renderKalender(){
+  const chipsHtml = [
+    {k:'alle', l:'Alle'},
+    {k:'brunst', l:'🔴 Brunst'},
+    {k:'kalbe', l:'🐄 Kalbung'},
+    {k:'tu', l:'🩺 TU fällig'}
+  ].map(c => '<button class="chip'+(kalFilter===c.k?' active':'')+'" onclick="setKalFilter(\''+c.k+'\')">'+c.l+'</button>').join('');
+  $('#kalChips').innerHTML = chipsHtml;
+
+  const termine = computeTermine();
+  let list = termine;
+  if(kalFilter!=='alle') list = termine.filter(t=>t.typ===kalFilter);
+
+  if(!list.length){
+    $('#kalList').innerHTML = '<div class="empty"><span class="ico">📅</span>Keine anstehenden Termine.</div>';
+    return;
+  }
+
+  // Gruppiert nach Datum
+  const byDate = {};
+  list.forEach(t=>{
+    if(!byDate[t.datum]) byDate[t.datum] = [];
+    byDate[t.datum].push(t);
+  });
+  const dates = Object.keys(byDate).sort();
+  const heute = new Date().toISOString().slice(0,10);
+  let html = '';
+  dates.forEach(d => {
+    const label = d===heute ? 'HEUTE · '+deCH(d) : deCH(d);
+    html += '<div class="date-hdr">'+label+'</div>';
+    byDate[d].forEach(ev => {
+      html += '<div class="event k-'+(ev.color||'green')+'">'+
+        '<div class="ev-title">'+ev.label+'</div>'+
+        '<div class="ev-sub">'+esc(ev.detail)+'</div>'+
+      '</div>';
+    });
+  });
+  $('#kalList').innerHTML = html;
+}
+function setKalFilter(f){ kalFilter = f; renderKalender(); }
+
+function computeTermine(){
+  const termine = [];
+  const heute = new Date(); heute.setHours(0,0,0,0);
+  const bis = new Date(); bis.setDate(bis.getDate()+60);
+  const inRange = iso => {
+    if(!iso) return false;
+    const d = new Date(iso);
+    return d>=heute && d<=bis;
+  };
+  (data.besamungen||[]).forEach(b => {
+    if(!b.datum) return;
+    const tier = findTier(b.tvd);
+    const name = tier?.name || b.tvd;
+    // Brunst-Fenster ±2 Tage um Tag 21
+    if(!b.tuResult){
+      [19,20,21,22,23].forEach(off => {
+        const d = addDays(toISO(b.datum), off);
+        if(!inRange(d)) return;
+        termine.push({
+          datum: d,
+          typ: 'brunst',
+          label: off===21 ? '🔴 Brunst beobachten!' : '👀 Brunst möglich',
+          detail: name + (b.nurBrunst ? ' (erwartete Folge-Brunst, Tag '+off+')' : ' (nach Besamung, Tag '+off+')'),
+          color: off===21 ? 'red' : 'blue'
+        });
+      });
+    }
+    if(b.kalbetermin && inRange(b.kalbetermin)){
+      termine.push({
+        datum: toISO(b.kalbetermin), typ:'kalbe', label:'🐄 Kalbetermin',
+        detail: name + (b.stier?' (Stier: '+b.stier+')':''), color:'red'
+      });
+    }
+    // TU-Empfehlung: 30-40 Tage nach Besamung
+    if(!b.tuResult && !b.tuDatum){
+      const tuDate = addDays(toISO(b.datum), 35);
+      if(inRange(tuDate)) termine.push({
+        datum: tuDate, typ:'tu', label:'🩺 TU empfohlen',
+        detail: name + ' (ca. 35 Tage nach Besamung)', color:'orange'
+      });
+    }
+  });
+  // Sortieren
+  termine.sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+  return termine;
+}
+
+/* ===================================================================
+   RENDER: MEHR
+=================================================================== */
+function renderMehr(){
+  const pin = getPin();
+  const info = $('#syncInfo');
+  const last = localStorage.getItem('lastSync');
+  if(info){
+    info.innerHTML = pin
+      ? '✅ PIN gespeichert. '+(last?'Letzter Sync: '+new Date(last).toLocaleString('de-CH'):'Noch nicht synchronisiert.')
+      : '⚠️ Kein PIN gesetzt.';
+  }
+  const la = $('#lastSyncAt');
+  if(la) la.textContent = last ? new Date(last).toLocaleString('de-CH') : 'nie';
+}
+
+/* ===================================================================
+   INIT
+=================================================================== */
+function init(){
+  loadLocal();
+  if(!getPin()){
+    switchScreen('welcome');
+    $('#sc-welcome').classList.add('active');
+    return;
+  }
+  switchScreen('tiere');
+  syncNow();
+
+  // Service Worker registrieren (PWA)
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+  // Auto-Sync beim Fokus-Wechsel
+  window.addEventListener('focus', ()=>{ if(getPin()) syncNow(); });
+  // Regelmässig alle 5 Minuten
+  setInterval(()=>{ if(getPin()) syncNow(); }, 5*60*1000);
+}
+
+init();
+</script>
+</body>
+</html>
