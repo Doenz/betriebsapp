@@ -499,8 +499,8 @@ async function runDiagnose(){
     if(r.ok){
       const rows = await r.json();
       add(true, '4. PIN akzeptiert', rows.length+' Zeile(n) gelesen');
-      // 5. Daten-Zeilen vollständig?
-      const r2 = await cloudFetch('betriebsapp_data?select=id');
+      // 5. Daten-Zeilen vollständig + ZÄHLEN was drin ist
+      const r2 = await cloudFetch('betriebsapp_data?select=*');
       const allRows = await r2.json();
       const gefunden = allRows.map(x=>x.id);
       const erwartet = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings'];
@@ -509,6 +509,26 @@ async function runDiagnose(){
         add(false, '5. Alle Kategorien in Supabase', 'Fehlt: '+fehlend.join(', '));
       } else {
         add(true, '5. Alle Kategorien in Supabase', erwartet.length+'/'+erwartet.length+' vorhanden');
+      }
+      // 6. Anzahl pro Kategorie Cloud vs. Lokal
+      const cloudMap = {};
+      allRows.forEach(row => { cloudMap[row.id] = row.payload; });
+      const zeilen = erwartet.map(k => {
+        const cloudVal = cloudMap[k];
+        const cloudN = Array.isArray(cloudVal) ? cloudVal.length : (cloudVal ? 1 : 0);
+        const localVal = data[k];
+        const localN = Array.isArray(localVal) ? localVal.length : (localVal ? 1 : 0);
+        const warn = cloudN !== localN;
+        return {k, cloudN, localN, warn};
+      });
+      const alleIdent = zeilen.every(z => !z.warn);
+      const leerInCloud = zeilen.filter(z => z.cloudN===0 && ['tiere','felder','journal','besamungen'].includes(z.k));
+      let detail = zeilen.map(z => z.k+': Cloud '+z.cloudN+' / Lokal '+z.localN+(z.warn?' ⚠️':'')).join(' · ');
+      add(alleIdent && leerInCloud.length<=1, '6. Anzahl Einträge', detail);
+      // Spezielle Hinweise
+      if(leerInCloud.length>0){
+        const keys = leerInCloud.map(z=>z.k).join(', ');
+        add(false, '⚠️ Leer in der Cloud', 'Folgende Bereiche sind in Supabase leer: '+keys+'. Auf dem PC auf "⬆️ Zur Cloud senden" klicken, um die Daten zu pushen.');
       }
     } else if(r.status===401 || r.status===403){
       add(false, '4. PIN akzeptiert', 'Ablehnung HTTP '+r.status+' – falscher PIN');
@@ -1247,7 +1267,7 @@ async function forceUpdate(){
 /* ===================================================================
    SERVICE WORKER mit Update-Handling
 =================================================================== */
-const APP_VERSION = '2026-04-20-4';
+const APP_VERSION = '2026-04-20-5';
 let _swRegistration = null;
 
 function registerSW(){
