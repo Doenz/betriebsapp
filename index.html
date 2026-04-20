@@ -232,6 +232,16 @@ body{
       <div id="kalList"></div>
     </div>
 
+    <!-- SCHLACHTUNGEN -->
+    <div class="screen" id="sc-schlacht">
+      <div class="search-bar">
+        <span style="color:#bbb;padding-left:6px">🔍</span>
+        <input type="text" id="schlachtSearch" placeholder="Suche Name oder TVD..." oninput="renderSchlacht()">
+      </div>
+      <div id="schlachtStats"></div>
+      <div id="schlachtList"></div>
+    </div>
+
     <!-- MEHR / EINSTELLUNGEN -->
     <div class="screen" id="sc-mehr">
       <div class="card">
@@ -258,6 +268,7 @@ body{
     <button class="tab active" data-screen="tiere" onclick="switchScreen('tiere')"><span class="ico">🐄</span>Tiere</button>
     <button class="tab" data-screen="wiesen" onclick="switchScreen('wiesen')"><span class="ico">🌾</span>Wiesen</button>
     <button class="tab" data-screen="kalender" onclick="switchScreen('kalender')"><span class="ico">📅</span>Kalender</button>
+    <button class="tab" data-screen="schlacht" onclick="switchScreen('schlacht')"><span class="ico">🔪</span>Schlacht</button>
     <button class="tab" data-screen="mehr" onclick="switchScreen('mehr')"><span class="ico">⚙️</span>Mehr</button>
   </div>
 </div>
@@ -325,7 +336,7 @@ function switchScreen(name){
   const scEl = $('#sc-'+name);
   if(scEl) scEl.classList.add('active');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.screen===name));
-  const titles = {tiere:'Tiere', wiesen:'Wiesen', kalender:'Kalender', mehr:'Mehr'};
+  const titles = {tiere:'Tiere', wiesen:'Wiesen', kalender:'Kalender', schlacht:'Schlachtungen', mehr:'Mehr'};
   $('#screenTitle').textContent = titles[name] || 'Betriebsapp';
   // FAB nur wo sinnvoll
   const fab = $('#fab');
@@ -335,6 +346,7 @@ function switchScreen(name){
   if(name==='tiere') renderTiere();
   if(name==='wiesen') renderWiesen();
   if(name==='kalender') renderKalender();
+  if(name==='schlacht') renderSchlacht();
   if(name==='mehr') renderMehr();
 }
 
@@ -517,10 +529,23 @@ function renderTiere(){
     const age = ageDays(t.gebDatum);
     const ageStr = age!=null ? (age<365 ? age+' T' : Math.floor(age/365)+' J '+Math.floor((age%365)/30)+' M') : '';
     const idx = data.tiere.indexOf(t);
+    // Kuh-Kalb-Verbindung
+    let verbindung = '';
+    if(kat==='Kalb' && t.mutterTvd){
+      const mutter = findTier(t.mutterTvd);
+      if(mutter) verbindung = '<div style="font-size:12px;color:var(--green);margin-top:3px">↑ Mutter: '+esc(mutter.name||mutter.tvd)+'</div>';
+    } else if(kat!=='Kalb'){
+      const kaelber = data.tiere.filter(k => normTvd(k.mutterTvd)===normTvd(t.tvd) && gveKategorie(k)==='Kalb' && !k.abgang);
+      if(kaelber.length){
+        const namen = kaelber.map(k=>esc(k.name||k.tvd)).join(', ');
+        verbindung = '<div style="font-size:12px;color:var(--blue);margin-top:3px">↓ Kalb'+(kaelber.length>1?'er':'')+' ('+kaelber.length+'): '+namen+'</div>';
+      }
+    }
     return '<div class="list-item" onclick="showTierDetail('+idx+')">'+
       '<div class="main">'+
         '<div class="name">'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</div>'+
         '<div class="sub">'+esc(t.tvd||'')+' · '+katBadge+' · '+esc(t.gruppe||'-')+' · '+ageStr+'</div>'+
+        verbindung+
       '</div>'+
       '<div class="arr">›</div>'+
     '</div>';
@@ -547,8 +572,35 @@ function showTierDetail(idx){
 
   const alpOptions = ['','Portein+','Sarn+','Merla+','Portein','Sarn','Merla','Portein-']
     .map(a => '<option value="'+a+'"'+(t.alp===a?' selected':'')+'>'+(a||'—')+'</option>').join('');
-  const gruppeOptions = ['','A','B','C','D']
+  const gruppeOptions = ['','A','I']
     .map(g => '<option value="'+g+'"'+(t.gruppe===g?' selected':'')+'>'+(g||'—')+'</option>').join('');
+
+  // Verwandtschaft
+  let verwandtHtml = '';
+  if(t.mutterTvd){
+    const mutter = findTier(t.mutterTvd);
+    if(mutter){
+      const mutterIdx = data.tiere.indexOf(mutter);
+      verwandtHtml += '<div style="background:var(--green-l);padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer" onclick="closeModal();setTimeout(()=>showTierDetail('+mutterIdx+'),100)">'+
+        '<div style="font-size:12px;color:var(--text2)">↑ Mutter</div>'+
+        '<div style="font-weight:600">'+esc(mutter.name||mutter.tvd)+' <span style="color:var(--text2);font-size:12px">('+esc(mutter.tvd)+')</span></div>'+
+      '</div>';
+    }
+  }
+  const kaelber = data.tiere.filter(k => normTvd(k.mutterTvd)===normTvd(t.tvd) && !k.abgang);
+  if(kaelber.length){
+    verwandtHtml += '<div style="font-size:12px;color:var(--text2);margin:8px 0 4px">↓ Nachkommen ('+kaelber.length+')</div>';
+    kaelber.forEach(k => {
+      const kIdx = data.tiere.indexOf(k);
+      const kKat = gveKategorie(k);
+      const kAge = ageDays(k.gebDatum);
+      verwandtHtml += '<div style="background:var(--blue-l);padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer" onclick="closeModal();setTimeout(()=>showTierDetail('+kIdx+'),100)">'+
+        '<div style="font-weight:600">'+esc(k.name||k.tvd)+' <span style="color:var(--text2);font-size:12px">('+esc(k.tvd)+')</span></div>'+
+        '<div style="font-size:12px;color:var(--text2)">'+esc(kKat)+(kAge!=null?' · '+kAge+' Tage':'')+(k.geschlecht?' · '+esc(k.geschlecht):'')+'</div>'+
+      '</div>';
+    });
+  }
+  if(!verwandtHtml) verwandtHtml = '<div style="color:var(--text2);font-size:13px">Keine Verwandtschaft erfasst.</div>';
 
   openModal(
     '<h2>'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</h2>'+
@@ -562,10 +614,32 @@ function showTierDetail(idx){
       '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
       '<button class="btn btn-primary" onclick="saveTierDetail('+idx+')">Speichern</button>'+
     '</div>'+
-    '<h2 style="margin-top:20px">Letzte Besamungen/Brunst</h2>'+
+    '<h2 style="margin-top:20px;font-size:16px">👪 Verwandtschaft</h2>'+
+    verwandtHtml+
+    tierSchlachtInfo(t)+
+    '<h2 style="margin-top:20px;font-size:16px">Letzte Besamungen/Brunst</h2>'+
     besaHtml+
     '<button class="btn btn-blue btn-wide" style="margin-top:10px" onclick="closeModal();showBesamungForm('+idx+')">+ Besamung / Brunst erfassen</button>'
   );
+}
+
+// Zeigt Schlachtdaten im Tier-Detail, falls vorhanden
+function tierSchlachtInfo(t){
+  if(!t || !t.tvd) return '';
+  const n = normTvd(t.tvd);
+  const s = (data.schlachtungen||[]).find(x => normTvd(x.tvd)===n);
+  if(!s) return '';
+  const idx = data.schlachtungen.indexOf(s);
+  const fleisch = s.fleischigkeit ? '<span class="badge '+klassenBadge(s.fleischigkeit)+'">'+esc(s.fleischigkeit)+'</span>' : '—';
+  return '<h2 style="margin-top:20px;font-size:16px">🔪 Schlachtung</h2>'+
+    '<div style="background:var(--red-l);padding:12px;border-radius:8px;cursor:pointer" onclick="closeModal();setTimeout(()=>showSchlachtDetail('+idx+'),100)">'+
+      '<div style="font-weight:600">'+deCH(s.datum)+'</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:4px">'+
+        (s.gewicht?s.gewicht+' kg SG · ':'')+
+        (s.schlachtalter?s.schlachtalter+' Tage · ':'')+
+        fleisch+
+      '</div>'+
+    '</div>';
 }
 
 async function saveTierDetail(idx){
@@ -576,6 +650,16 @@ async function saveTierDetail(idx){
   t.bemerkungen = $('#tdBem').value;
   // Automatisch +/- je nach Kalb
   updateAlpKalbStatus(t.tvd);
+  // Gruppe und Alp an Kälber vererben (wenn Kuh/Rind)
+  if(gveKategorie(t)!=='Kalb'){
+    const nKuh = normTvd(t.tvd);
+    data.tiere.forEach(k => {
+      if(normTvd(k.mutterTvd)===nKuh && gveKategorie(k)==='Kalb'){
+        if(t.gruppe) k.gruppe = t.gruppe;
+        if(t.alp) k.alp = stripAlpPlus(t.alp); // Kalb bekommt kein +
+      }
+    });
+  }
   saveLocal();
   closeModal();
   renderTiere();
@@ -653,7 +737,7 @@ function renderWiesen(){
 
   $('#wiesenList').innerHTML = list.map(f => {
     const lastJ = (data.journal||[]).filter(j=>j.feldId===f.id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''))[0];
-    const lastTxt = lastJ ? deCH(lastJ.datum)+' · '+(lastJ.guelle?lastJ.guelle+'m³G ':'')+(lastJ.mist?lastJ.mist+'m³M':'') : 'kein Journal-Eintrag';
+    const lastTxt = lastJ ? deCH(lastJ.datum)+' · '+journalKurz(lastJ) : 'kein Journal-Eintrag';
     return '<div class="list-item" onclick="showFeldDetail(\''+esc(f.id)+'\')">'+
       '<div class="main">'+
         '<div class="name">'+esc(f.name||'')+' <span class="badge b-gray">'+esc(f.parzNr||'')+'</span></div>'+
@@ -664,20 +748,39 @@ function renderWiesen(){
   }).join('');
 }
 
+// Kompakte Zusammenfassung eines Journal-Eintrags
+function journalKurz(j){
+  const parts = [];
+  if(j.guelle) parts.push(j.guelle+'m³G');
+  if(j.mist) parts.push(j.mist+'m³M');
+  if(j.siloballen) parts.push(j.siloballen+' Silo');
+  if(j.belueftung) parts.push(j.belueftung+' BH');
+  if(j.bodenheu) parts.push(j.bodenheu+' BodH');
+  if(j.pflege) parts.push(j.pflege);
+  if(j.weidenVon) parts.push('🐄 weide');
+  return parts.join(' · ') || (j.bemerkung ? j.bemerkung.slice(0,30) : '—');
+}
+
 function showFeldDetail(id){
   const f = (data.felder||[]).find(x=>x.id===id);
   if(!f) return;
   const eintraege = (data.journal||[]).filter(j=>j.feldId===id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
-  const listHtml = eintraege.length ? eintraege.slice(0,10).map(j =>
-    '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px">'+
-    '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
-    '<div style="color:var(--text2)">'+
-      (j.guelle?'Gülle '+j.guelle+' m³ · ':'')+
-      (j.mist?'Mist '+j.mist+' m³ · ':'')+
-      (j.bearFlaeche?'Fl. '+j.bearFlaeche+' a · ':'')+
-      esc(j.bemerkung||'')+
-    '</div></div>'
-  ).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge.</div>';
+  const listHtml = eintraege.length ? eintraege.slice(0,15).map(j => {
+    const det = [];
+    if(j.bearFlaeche) det.push('Fl. '+j.bearFlaeche+' a');
+    if(j.guelle) det.push('Gülle '+j.guelle+' m³');
+    if(j.mist) det.push('Mist '+j.mist+' m³');
+    if(j.pflege) det.push('🔧 '+esc(j.pflege));
+    if(j.weidenVon && j.weidenBis) det.push('🐄 Weide '+deCH(j.weidenVon)+'–'+deCH(j.weidenBis)+(j.weidenAnzahl?' ('+j.weidenAnzahl+' T.)':''));
+    if(j.siloballen) det.push('🟢 '+j.siloballen+' Siloballen');
+    if(j.belueftung) det.push('🌾 '+j.belueftung+' LW Belüftungsheu');
+    if(j.bodenheu) det.push('🌾 '+j.bodenheu+' LW Bodenheu');
+    if(j.bemerkung) det.push(esc(j.bemerkung));
+    return '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px">'+
+      '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
+      '<div style="color:var(--text2)">'+(det.join(' · ')||'—')+'</div>'+
+    '</div>';
+  }).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge.</div>';
 
   openModal(
     '<h2>'+esc(f.name||'')+'</h2>'+
@@ -701,9 +804,31 @@ function showJournalForm(preFeldId){
     '<h2>🌾 Journal-Eintrag</h2>'+
     '<div class="field"><label>Feld</label><select id="jfFeld">'+feldOpts+'</select></div>'+
     '<div class="field"><label>Datum</label><input type="date" id="jfDatum" value="'+heute+'"></div>'+
-    '<div class="field"><label>Gülle (m³)</label><input type="number" id="jfGuelle" step="0.1" inputmode="decimal"></div>'+
-    '<div class="field"><label>Mist (m³)</label><input type="number" id="jfMist" step="0.1" inputmode="decimal"></div>'+
-    '<div class="field"><label>Bearbeitete Fläche (Aren)</label><input type="number" id="jfFlaeche" step="0.1" inputmode="decimal"></div>'+
+    '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Bearbeitung</h3>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Gülle (m³)</label><input type="number" id="jfGuelle" step="0.5" inputmode="decimal"></div>'+
+      '<div class="field"><label>Mist (m³)</label><input type="number" id="jfMist" step="0.5" inputmode="decimal"></div>'+
+    '</div>'+
+    '<div class="field"><label>Bearb. Fläche (Aren)</label><input type="number" id="jfFlaeche" step="1" inputmode="numeric"></div>'+
+    '<div class="field"><label>Pflege</label>'+
+      '<select id="jfPflege">'+
+        '<option value="">—</option>'+
+        '<option>Schleppen</option><option>Walzen</option><option>Nachsaat</option>'+
+        '<option>Unkrautbekämpfung</option><option>Mäusebekämpfung</option>'+
+      '</select>'+
+    '</div>'+
+    '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🐄 Weide</h3>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Weiden von</label><input type="date" id="jfWeidenVon"></div>'+
+      '<div class="field"><label>Weiden bis</label><input type="date" id="jfWeidenBis"></div>'+
+    '</div>'+
+    '<div class="field"><label>Anzahl Tiere</label><input type="number" id="jfWeidenAnzahl" step="1" inputmode="numeric"></div>'+
+    '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🌾 Ernte (Lastwagen / Stück)</h3>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Siloballen (Stk)</label><input type="number" id="jfSilo" step="1" inputmode="numeric"></div>'+
+      '<div class="field"><label>Belüft.heu (LW)</label><input type="number" id="jfBelueft" step="1" inputmode="numeric"></div>'+
+      '<div class="field"><label>Bodenheu (LW)</label><input type="number" id="jfBoden" step="1" inputmode="numeric"></div>'+
+    '</div>'+
     '<div class="field"><label>Bemerkung</label><textarea id="jfBem"></textarea></div>'+
     '<div class="btn-row">'+
       '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
@@ -717,11 +842,19 @@ async function saveJournal(){
   const datum = $('#jfDatum').value;
   if(!feldId){ alert('Feld wählen!'); return; }
   if(!datum){ alert('Datum eingeben!'); return; }
+  // Feldnamen exakt wie Hauptapp-Format — für saubere Cloud-Kompatibilität
   const j = {
     datum, feldId,
+    bearFlaeche: parseInt($('#jfFlaeche').value)||0,
     guelle: parseFloat($('#jfGuelle').value)||0,
     mist: parseFloat($('#jfMist').value)||0,
-    bearFlaeche: parseFloat($('#jfFlaeche').value)||0,
+    pflege: $('#jfPflege').value,
+    weidenVon: $('#jfWeidenVon').value,
+    weidenBis: $('#jfWeidenBis').value,
+    weidenAnzahl: parseInt($('#jfWeidenAnzahl').value)||0,
+    siloballen: parseInt($('#jfSilo').value)||0,
+    belueftung: parseInt($('#jfBelueft').value)||0,
+    bodenheu: parseInt($('#jfBoden').value)||0,
     bemerkung: $('#jfBem').value
   };
   if(!data.journal) data.journal = [];
@@ -823,6 +956,153 @@ function computeTermine(){
   // Sortieren
   termine.sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
   return termine;
+}
+
+/* ===================================================================
+   RENDER: SCHLACHTUNGEN
+=================================================================== */
+function renderSchlacht(){
+  const q = ($('#schlachtSearch').value||'').toLowerCase();
+  let list = (data.schlachtungen||[]).slice();
+  if(q) list = list.filter(s =>
+    (s.tiername||'').toLowerCase().includes(q) ||
+    (s.tvd||'').includes(q) ||
+    (s.mutter||'').toLowerCase().includes(q)
+  );
+  // Nach Datum absteigend
+  list.sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+
+  // Stats: letzte 12 Monate
+  const heute = new Date();
+  const vor12M = new Date(heute); vor12M.setMonth(vor12M.getMonth()-12);
+  const letzte12 = (data.schlachtungen||[]).filter(s=>{
+    if(!s.datum) return false;
+    return new Date(s.datum) >= vor12M;
+  });
+  const totalGewicht = letzte12.reduce((sum,s)=>sum+(parseFloat(s.gewicht)||0), 0);
+  const avgGewicht = letzte12.length ? totalGewicht/letzte12.length : 0;
+
+  $('#schlachtStats').innerHTML = letzte12.length ?
+    '<div class="card" style="display:flex;gap:12px;padding:12px">'+
+      '<div style="flex:1;text-align:center">'+
+        '<div style="font-size:24px;font-weight:700;color:var(--red)">'+letzte12.length+'</div>'+
+        '<div style="font-size:11px;color:var(--text2)">letzte 12 Mt.</div>'+
+      '</div>'+
+      '<div style="flex:1;text-align:center;border-left:1px solid var(--border)">'+
+        '<div style="font-size:24px;font-weight:700">'+totalGewicht.toFixed(0)+'</div>'+
+        '<div style="font-size:11px;color:var(--text2)">kg total SG</div>'+
+      '</div>'+
+      '<div style="flex:1;text-align:center;border-left:1px solid var(--border)">'+
+        '<div style="font-size:24px;font-weight:700">'+avgGewicht.toFixed(0)+'</div>'+
+        '<div style="font-size:11px;color:var(--text2)">kg Ø SG</div>'+
+      '</div>'+
+    '</div>' : '';
+
+  if(!list.length){
+    $('#schlachtList').innerHTML = '<div class="empty"><span class="ico">🔪</span>Keine Schlachtungen erfasst.</div>';
+    return;
+  }
+
+  // Gruppieren nach Jahr
+  const byJahr = {};
+  list.forEach(s => {
+    const jahr = (s.datum||'').slice(0,4) || '—';
+    if(!byJahr[jahr]) byJahr[jahr] = [];
+    byJahr[jahr].push(s);
+  });
+  const jahre = Object.keys(byJahr).sort().reverse();
+
+  let html = '';
+  jahre.forEach(jahr => {
+    html += '<div class="date-hdr">📅 '+jahr+' · '+byJahr[jahr].length+' Tier(e)</div>';
+    byJahr[jahr].forEach(s => {
+      const idx = data.schlachtungen.indexOf(s);
+      const fleischBadge = s.fleischigkeit ? '<span class="badge '+klassenBadge(s.fleischigkeit)+'">'+esc(s.fleischigkeit)+'</span>' : '';
+      const fettBadge = s.fettklasse ? '<span class="badge b-gray">F'+esc(s.fettklasse)+'</span>' : '';
+      html += '<div class="list-item" onclick="showSchlachtDetail('+idx+')">'+
+        '<div class="main">'+
+          '<div class="name">'+esc(s.tiername||'(ohne Name)')+' <span style="color:var(--text2);font-size:12px;font-weight:400">'+esc(s.tvd||'')+'</span></div>'+
+          '<div class="sub">'+
+            deCH(s.datum)+(s.schlachtalter?' · '+s.schlachtalter+' T':'')+
+            (s.gewicht?' · '+s.gewicht+' kg SG':'')+
+            ' '+fleischBadge+' '+fettBadge+
+          '</div>'+
+        '</div>'+
+        '<div class="arr">›</div>'+
+      '</div>';
+    });
+  });
+  $('#schlachtList').innerHTML = html;
+}
+
+function klassenBadge(cls){
+  // CH-TAX Farb-Logik: C/H = gut → grün, T+/T = mittel → blau, T-/A/X = schlecht → orange/rot
+  if(cls==='C' || cls==='H') return 'b-green';
+  if(cls==='T+' || cls==='T') return 'b-blue';
+  if(cls==='T-') return 'b-orange';
+  return 'b-red';
+}
+
+function showSchlachtDetail(idx){
+  const s = (data.schlachtungen||[])[idx];
+  if(!s) return;
+  const ausbeute = (s.lebendgewicht && s.gewicht) ? (s.gewicht*100/s.lebendgewicht).toFixed(1)+'%' : '—';
+  const fleischBadge = s.fleischigkeit ? '<span class="badge '+klassenBadge(s.fleischigkeit)+'">'+esc(s.fleischigkeit)+'</span>' : '—';
+  const fettBadge = s.fettklasse ? '<span class="badge b-gray">Fett '+esc(s.fettklasse)+'</span>' : '—';
+
+  // Link zum Tier wenn noch vorhanden
+  const tier = findTier(s.tvd);
+  let tierLink = '';
+  if(tier){
+    const tIdx = data.tiere.indexOf(tier);
+    tierLink = '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal();setTimeout(()=>showTierDetail('+tIdx+'),100)">🐄 Tier-Stammdaten öffnen</button>';
+  }
+
+  openModal(
+    '<h2>🔪 '+esc(s.tiername||'(ohne Name)')+'</h2>'+
+    '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">TVD '+esc(s.tvd||'-')+' · geschlachtet '+deCH(s.datum)+'</div>'+
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'+
+      kpi('Lebendgew.', (s.lebendgewicht||'-')+' kg')+
+      kpi('Schlachtgew.', (s.gewicht||'-')+' kg')+
+      kpi('Ausbeute', ausbeute)+
+      kpi('Alter', (s.schlachtalter||'-')+' T')+
+    '</div>'+
+
+    '<div class="card" style="padding:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<span style="color:var(--text2);font-size:13px">Fleischigkeit (CH-TAX)</span>'+
+        '<span style="font-size:16px">'+fleischBadge+'</span>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="color:var(--text2);font-size:13px">Fettklasse</span>'+
+        '<span style="font-size:16px">'+fettBadge+'</span>'+
+      '</div>'+
+    '</div>'+
+
+    (s.produkt ? '<div class="field"><label>Produkt</label><div style="padding:10px;background:var(--gray);border-radius:6px">'+esc(s.produkt)+'</div></div>' : '')+
+
+    '<div class="card" style="padding:10px;margin-top:12px">'+
+      '<div style="font-size:13px;color:var(--text2);margin-bottom:6px">Tier-Info</div>'+
+      '<div style="font-size:14px">Rasse: '+esc(s.rasse||'—')+'</div>'+
+      '<div style="font-size:14px">Geschlecht: '+esc(s.geschlecht||'—')+'</div>'+
+      '<div style="font-size:14px">Geburt: '+deCH(s.gebDatum)+'</div>'+
+      '<div style="font-size:14px">Mutter: '+esc(s.mutter||s.mutterTvd||'—')+'</div>'+
+      (s.vater?'<div style="font-size:14px">Vater: '+esc(s.vater)+'</div>':'')+
+    '</div>'+
+
+    (s.bemerkungen ? '<div class="field" style="margin-top:12px"><label>Bemerkungen</label><div style="padding:10px;background:var(--gray);border-radius:6px;white-space:pre-wrap">'+esc(s.bemerkungen)+'</div></div>' : '')+
+
+    tierLink+
+    '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Schliessen</button>'
+  );
+}
+
+function kpi(label, val){
+  return '<div class="card" style="padding:10px;text-align:center">'+
+    '<div style="font-size:18px;font-weight:700">'+esc(val)+'</div>'+
+    '<div style="font-size:11px;color:var(--text2);margin-top:2px">'+esc(label)+'</div>'+
+  '</div>';
 }
 
 /* ===================================================================
