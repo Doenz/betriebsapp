@@ -296,14 +296,14 @@ body{
 =================================================================== */
 const SUPABASE_URL = 'https://glfcazurctiyxmrvbjdy.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jsQr_GTzKE4jnPEQzEGqmQ_0IQhuTy3';
-const SYNC_ALLOWED = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings'];
+const SYNC_ALLOWED = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings','wiesenEntries'];
 
 /* ===================================================================
    STATE
 =================================================================== */
 let data = {
   tiere:[], besamungen:[], behandlungen:[], schlachtungen:[],
-  felder:[], journal:[], wiesenSettings:null
+  felder:[], journal:[], wiesenSettings:null, wiesenEntries:{}
 };
 let currentScreen = 'tiere';
 let tiereFilter = 'alle';
@@ -416,7 +416,10 @@ async function cloudPull(){
 
 async function cloudPushKey(key){
   if(!SYNC_ALLOWED.includes(key)) throw new Error('Key nicht erlaubt: '+key);
-  const payload = key==='wiesenSettings' ? (data[key]||null) : (data[key]||[]);
+  let payload;
+  if(key==='wiesenSettings') payload = data[key]||null;
+  else if(key==='wiesenEntries') payload = data[key]||{};
+  else payload = data[key]||[];
   const r = await cloudFetch('betriebsapp_data', {
     method:'POST',
     headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
@@ -503,7 +506,7 @@ async function runDiagnose(){
       const r2 = await cloudFetch('betriebsapp_data?select=*');
       const allRows = await r2.json();
       const gefunden = allRows.map(x=>x.id);
-      const erwartet = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings'];
+      const erwartet = SYNC_ALLOWED;
       const fehlend = erwartet.filter(k=>!gefunden.includes(k));
       if(fehlend.length){
         add(false, '5. Alle Kategorien in Supabase', 'Fehlt: '+fehlend.join(', '));
@@ -513,16 +516,19 @@ async function runDiagnose(){
       // 6. Anzahl pro Kategorie Cloud vs. Lokal
       const cloudMap = {};
       allRows.forEach(row => { cloudMap[row.id] = row.payload; });
+      const count = v => {
+        if(Array.isArray(v)) return v.length;
+        if(v && typeof v === 'object') return Object.values(v).reduce((s,arr)=>s+(Array.isArray(arr)?arr.length:0), 0);
+        return v ? 1 : 0;
+      };
       const zeilen = erwartet.map(k => {
-        const cloudVal = cloudMap[k];
-        const cloudN = Array.isArray(cloudVal) ? cloudVal.length : (cloudVal ? 1 : 0);
-        const localVal = data[k];
-        const localN = Array.isArray(localVal) ? localVal.length : (localVal ? 1 : 0);
+        const cloudN = count(cloudMap[k]);
+        const localN = count(data[k]);
         const warn = cloudN !== localN;
         return {k, cloudN, localN, warn};
       });
       const alleIdent = zeilen.every(z => !z.warn);
-      const leerInCloud = zeilen.filter(z => z.cloudN===0 && ['tiere','felder','journal','besamungen'].includes(z.k));
+      const leerInCloud = zeilen.filter(z => z.cloudN===0 && ['tiere','felder','wiesenEntries','besamungen'].includes(z.k));
       let detail = zeilen.map(z => z.k+': Cloud '+z.cloudN+' / Lokal '+z.localN+(z.warn?' ⚠️':'')).join(' · ');
       add(alleIdent && leerInCloud.length<=1, '6. Anzahl Einträge', detail);
       // Spezielle Hinweise
@@ -856,16 +862,33 @@ function renderWiesen(){
   }
 
   $('#wiesenList').innerHTML = list.map(f => {
-    const lastJ = (data.journal||[]).filter(j=>j.feldId===f.id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''))[0];
-    const lastTxt = lastJ ? deCH(lastJ.datum)+' · '+journalKurz(lastJ) : 'kein Journal-Eintrag';
+    const alleEinträge = getFeldEintraege(f.id);
+    const lastJ = alleEinträge.sort((a,b)=>(b.datum||'').localeCompare(a.datum||''))[0];
+    const lastTxt = lastJ ? deCH(lastJ.datum)+' · '+journalKurz(lastJ) : (alleEinträge.length?'(' +alleEinträge.length+ ' Einträge)':'kein Journal-Eintrag');
     return '<div class="list-item" onclick="showFeldDetail(\''+esc(f.id)+'\')">'+
       '<div class="main">'+
         '<div class="name">'+esc(f.name||'')+' <span class="badge b-gray">'+esc(f.parzNr||'')+'</span></div>'+
-        '<div class="sub">'+esc(f.flaeche||0)+' a · '+esc(lastTxt)+'</div>'+
+        '<div class="sub">'+esc(f.flaeche||0)+' a · '+alleEinträge.length+' Eintr. · '+esc(lastTxt.slice(0,60))+'</div>'+
       '</div>'+
       '<div class="arr">›</div>'+
     '</div>';
   }).join('');
+}
+
+// Holt alle Einträge zu einem Feld aus data.wiesenEntries (alle Jahre zusammen)
+function getFeldEintraege(feldId){
+  const we = data.wiesenEntries || {};
+  const out = [];
+  Object.keys(we).forEach(key => {
+    // Key-Format: JAHR_FELDID
+    const sep = key.indexOf('_');
+    if(sep < 0) return;
+    const fid = key.slice(sep+1);
+    if(fid === feldId){
+      (we[key]||[]).forEach(e => out.push(e));
+    }
+  });
+  return out;
 }
 
 // Kompakte Zusammenfassung eines Journal-Eintrags
@@ -884,7 +907,7 @@ function journalKurz(j){
 function showFeldDetail(id){
   const f = (data.felder||[]).find(x=>x.id===id);
   if(!f) return;
-  const eintraege = (data.journal||[]).filter(j=>j.feldId===id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  const eintraege = getFeldEintraege(id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
   const listHtml = eintraege.length ? eintraege.slice(0,15).map(j => {
     const det = [];
     if(j.bearFlaeche) det.push('Fl. '+j.bearFlaeche+' a');
@@ -962,9 +985,9 @@ async function saveJournal(){
   const datum = $('#jfDatum').value;
   if(!feldId){ alert('Feld wählen!'); return; }
   if(!datum){ alert('Datum eingeben!'); return; }
-  // Feldnamen exakt wie Hauptapp-Format — für saubere Cloud-Kompatibilität
+  // Feldnamen exakt wie Hauptapp-Format
   const j = {
-    datum, feldId,
+    datum,
     bearFlaeche: parseInt($('#jfFlaeche').value)||0,
     guelle: parseFloat($('#jfGuelle').value)||0,
     mist: parseFloat($('#jfMist').value)||0,
@@ -973,17 +996,20 @@ async function saveJournal(){
     weidenBis: $('#jfWeidenBis').value,
     weidenAnzahl: parseInt($('#jfWeidenAnzahl').value)||0,
     siloballen: parseInt($('#jfSilo').value)||0,
-    belueftung: parseInt($('#jfBelueft').value)||0,
+    belueftungsheu: parseInt($('#jfBelueft').value)||0,
     bodenheu: parseInt($('#jfBoden').value)||0,
     bemerkung: $('#jfBem').value
   };
-  if(!data.journal) data.journal = [];
-  data.journal.push(j);
+  if(!data.wiesenEntries) data.wiesenEntries = {};
+  const jahr = datum.slice(0,4);
+  const storeKey = jahr + '_' + feldId;
+  if(!data.wiesenEntries[storeKey]) data.wiesenEntries[storeKey] = [];
+  data.wiesenEntries[storeKey].push(j);
   saveLocal();
   closeModal();
   toast('Journal-Eintrag gespeichert');
   if(currentScreen==='wiesen') renderWiesen();
-  try { await cloudPushKey('journal'); }
+  try { await cloudPushKey('wiesenEntries'); }
   catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
 }
 
@@ -1267,7 +1293,7 @@ async function forceUpdate(){
 /* ===================================================================
    SERVICE WORKER mit Update-Handling
 =================================================================== */
-const APP_VERSION = '2026-04-20-5';
+const APP_VERSION = '2026-04-20-6';
 let _swRegistration = null;
 
 function registerSW(){
