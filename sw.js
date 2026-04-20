@@ -1,7 +1,7 @@
-// Service Worker für Betriebsapp Mobile
-// Strategie: App-Shell cachen, Supabase-Anfragen immer live
-const CACHE_NAME = 'betriebsapp-mobile-v1';
-const APP_SHELL = [
+var VERSION = '2026-04-20-4';
+var CACHE_NAME = 'betriebsapp-mobile-' + VERSION;
+
+var APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
@@ -9,41 +9,73 @@ const APP_SHELL = [
   './icons/icon-512.png'
 ];
 
-self.addEventListener('install', (e) => {
+self.addEventListener('install', function(e){
   e.waitUntil(
-    caches.open(CACHE_NAME).then(c => c.addAll(APP_SHELL)).then(()=>self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then(function(c){ return c.addAll(APP_SHELL); })
+      .then(function(){ return self.skipWaiting(); })
+      .catch(function(err){ console.warn('SW install:', err); })
   );
 });
 
-self.addEventListener('activate', (e) => {
+self.addEventListener('activate', function(e){
   e.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-    )).then(()=>self.clients.claim())
+    caches.keys()
+      .then(function(keys){
+        var kills = keys.filter(function(k){ return k !== CACHE_NAME; }).map(function(k){ return caches.delete(k); });
+        return Promise.all(kills);
+      })
+      .then(function(){ return self.clients.claim(); })
   );
 });
 
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-  // Supabase-Anfragen: NIE cachen — immer live
-  if (url.hostname.includes('supabase.co')) {
-    return; // lässt Browser normal fetchen
+self.addEventListener('fetch', function(e){
+  var req = e.request;
+  if(req.method !== 'GET') return;
+  var url;
+  try { url = new URL(req.url); } catch(_){ return; }
+
+  if(url.hostname.indexOf('supabase.co') !== -1) return;
+  if(url.origin !== self.location.origin) return;
+
+  var p = url.pathname;
+  var isHTML = req.mode === 'navigate' || req.destination === 'document' || p.endsWith('.html') || p === '/' || p.endsWith('/');
+  var isCode = p.endsWith('.js') || p.endsWith('.json');
+
+  if(isHTML || isCode){
+    e.respondWith(networkFirst(req));
+  } else {
+    e.respondWith(cacheFirst(req));
   }
-  // Navigations- und App-Shell-Anfragen: Cache-first mit Netzwerk-Fallback
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(resp => {
-        // Erfolgreiche Antworten für Shell-Resourcen cachen
-        if (resp && resp.status === 200 && e.request.method === 'GET') {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        }
-        return resp;
-      }).catch(()=>{
-        // Offline-Fallback: Startseite
-        if (e.request.mode === 'navigate') return caches.match('./index.html');
-      });
-    })
-  );
+});
+
+function networkFirst(req){
+  return fetch(req).then(function(resp){
+    if(resp && resp.status === 200){
+      var clone = resp.clone();
+      caches.open(CACHE_NAME).then(function(c){ c.put(req, clone); }).catch(function(){});
+    }
+    return resp;
+  }).catch(function(){
+    return caches.match(req).then(function(cached){
+      return cached || caches.match('./index.html');
+    });
+  });
+}
+
+function cacheFirst(req){
+  return caches.match(req).then(function(cached){
+    if(cached) return cached;
+    return fetch(req).then(function(resp){
+      if(resp && resp.status === 200){
+        var clone = resp.clone();
+        caches.open(CACHE_NAME).then(function(c){ c.put(req, clone); }).catch(function(){});
+      }
+      return resp;
+    });
+  });
+}
+
+self.addEventListener('message', function(e){
+  if(e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });

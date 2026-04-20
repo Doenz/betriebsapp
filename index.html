@@ -248,7 +248,13 @@ body{
         <h2 style="margin:0 0 4px">☁️ Cloud-Sync</h2>
         <div id="syncInfo" style="color:var(--text2);font-size:13px;margin-bottom:12px"></div>
         <button class="btn btn-primary btn-wide" onclick="syncNow()" style="margin-bottom:8px">⟳ Jetzt synchronisieren</button>
-        <button class="btn btn-outline btn-wide" onclick="setPinInteractive()">🔑 PIN ändern</button>
+        <button class="btn btn-outline btn-wide" onclick="setPinInteractive()" style="margin-bottom:8px">🔑 PIN ändern</button>
+        <button class="btn btn-outline btn-wide" onclick="runDiagnose()">🔧 Sync-Diagnose starten</button>
+      </div>
+      <div class="card">
+        <h2 style="margin:0 0 4px">🔄 App-Update</h2>
+        <div style="color:var(--text2);font-size:13px;margin-bottom:12px">Version <span id="appVersion"></span></div>
+        <button class="btn btn-outline btn-wide" onclick="forceUpdate()">🔄 Nach Updates suchen & neu laden</button>
       </div>
       <div class="card">
         <h2 style="margin:0 0 8px">ℹ️ Info</h2>
@@ -437,13 +443,107 @@ async function syncNow(){
     if(currentScreen==='tiere') renderTiere();
     else if(currentScreen==='wiesen') renderWiesen();
     else if(currentScreen==='kalender') renderKalender();
+    else if(currentScreen==='schlacht') renderSchlacht();
     else if(currentScreen==='mehr') renderMehr();
   } catch(e){
-    setStatus(false, e.message);
-    toast('Sync fehlgeschlagen: '+e.message);
+    const friendly = interpretFetchError(e);
+    setStatus(false, friendly);
+    toast('Sync: '+friendly);
   } finally {
     syncInFlight = false;
   }
+}
+
+// Macht aus kryptischen HTTP-Errors lesbare Meldungen
+function interpretFetchError(e){
+  const msg = (e && e.message) || String(e);
+  if(/HTTP 401|HTTP 403/.test(msg)) return 'Falscher PIN oder Key';
+  if(/HTTP 404/.test(msg)) return 'Tabelle fehlt in Supabase';
+  if(/HTTP 5\d\d/.test(msg)) return 'Supabase-Server-Fehler';
+  if(/Failed to fetch|NetworkError|Network request failed/i.test(msg)) return 'Keine Internet-Verbindung';
+  if(/Kein PIN/.test(msg)) return 'Kein PIN gesetzt';
+  return msg;
+}
+
+/* ===================================================================
+   DIAGNOSE: Schritt-für-Schritt prüfen was klemmt
+=================================================================== */
+async function runDiagnose(){
+  const steps = [];
+  const add = (ok, label, detail) => steps.push({ok, label, detail: detail||''});
+
+  // 1. Internet?
+  add(navigator.onLine, '1. Internet', navigator.onLine ? 'online' : 'offline');
+
+  // 2. PIN gesetzt?
+  const pin = getPin();
+  add(!!pin, '2. PIN gesetzt', pin ? pin.length+' Zeichen gespeichert' : 'noch kein PIN');
+  if(!pin){ renderDiagnose(steps); return; }
+
+  // 3. Supabase erreichbar?
+  let urlOk = false;
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/', {
+      headers: {'apikey': SUPABASE_KEY}
+    });
+    urlOk = r.status < 500;
+    add(urlOk, '3. Supabase erreichbar', 'HTTP '+r.status);
+  } catch(e){
+    add(false, '3. Supabase erreichbar', 'Netzwerk-Fehler: '+e.message);
+  }
+  if(!urlOk){ renderDiagnose(steps); return; }
+
+  // 4. Tabelle existiert + Auth stimmt?
+  try {
+    const r = await cloudFetch('betriebsapp_data?select=id&limit=1');
+    if(r.ok){
+      const rows = await r.json();
+      add(true, '4. PIN akzeptiert', rows.length+' Zeile(n) gelesen');
+      // 5. Daten-Zeilen vollständig?
+      const r2 = await cloudFetch('betriebsapp_data?select=id');
+      const allRows = await r2.json();
+      const gefunden = allRows.map(x=>x.id);
+      const erwartet = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings'];
+      const fehlend = erwartet.filter(k=>!gefunden.includes(k));
+      if(fehlend.length){
+        add(false, '5. Alle Kategorien in Supabase', 'Fehlt: '+fehlend.join(', '));
+      } else {
+        add(true, '5. Alle Kategorien in Supabase', erwartet.length+'/'+erwartet.length+' vorhanden');
+      }
+    } else if(r.status===401 || r.status===403){
+      add(false, '4. PIN akzeptiert', 'Ablehnung HTTP '+r.status+' – falscher PIN');
+    } else if(r.status===404){
+      add(false, '4. Tabelle existiert', 'HTTP 404 – SQL-Script noch nicht ausgeführt?');
+    } else {
+      const txt = await r.text();
+      add(false, '4. Zugriff', 'HTTP '+r.status+': '+txt.slice(0,120));
+    }
+  } catch(e){
+    add(false, '4. Zugriff', e.message);
+  }
+
+  renderDiagnose(steps);
+}
+
+function renderDiagnose(steps){
+  const html = steps.map(s => {
+    const icon = s.ok ? '✅' : '❌';
+    const color = s.ok ? 'var(--green)' : 'var(--red)';
+    return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">'+
+      '<span style="font-size:18px">'+icon+'</span>'+
+      '<div style="flex:1">'+
+        '<div style="font-weight:600;color:'+color+'">'+esc(s.label)+'</div>'+
+        '<div style="font-size:12px;color:var(--text2);word-break:break-word">'+esc(s.detail)+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  openModal(
+    '<h2>🔧 Sync-Diagnose</h2>'+
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:10px">Prüft Schritt für Schritt, wo der Sync klemmt.</div>'+
+    html+
+    '<button class="btn btn-primary btn-wide" style="margin-top:16px" onclick="closeModal();runDiagnose()">⟳ Nochmal prüfen</button>'+
+    '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Schliessen</button>'
+  );
 }
 
 function setStatus(ok, msg){
@@ -1119,6 +1219,89 @@ function renderMehr(){
   }
   const la = $('#lastSyncAt');
   if(la) la.textContent = last ? new Date(last).toLocaleString('de-CH') : 'nie';
+  const v = $('#appVersion');
+  if(v) v.textContent = APP_VERSION;
+}
+
+// Forciert ein App-Update: leert alle Caches und entlädt Service Worker
+async function forceUpdate(){
+  if(!confirm('App-Cache leeren und neu laden?\n(Deine Daten bleiben erhalten.)')) return;
+  try {
+    // Alle Caches löschen
+    if('caches' in window){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    // SW updaten + deregistrieren
+    if('serviceWorker' in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for(const r of regs){ try{ await r.update(); }catch(e){} }
+    }
+    toast('Cache geleert – lade neu...');
+    setTimeout(()=>location.reload(), 500);
+  } catch(e){
+    alert('Fehler: '+e.message);
+  }
+}
+
+/* ===================================================================
+   SERVICE WORKER mit Update-Handling
+=================================================================== */
+const APP_VERSION = '2026-04-20-4';
+let _swRegistration = null;
+
+function registerSW(){
+  if(!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'})
+    .then(reg => {
+      _swRegistration = reg;
+
+      // Bei neuer Version: Prompt anzeigen
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', () => {
+          if(nw.state === 'installed' && navigator.serviceWorker.controller){
+            showUpdatePrompt();
+          }
+        });
+      });
+
+      // Periodisch auf Updates prüfen (alle 60 Sekunden)
+      setInterval(() => { try { reg.update(); } catch(e){} }, 60*1000);
+      // Sofort einmal prüfen
+      setTimeout(() => { try { reg.update(); } catch(e){} }, 3000);
+    })
+    .catch(err => console.warn('SW register fail:', err));
+
+  // Wenn der neue SW übernimmt, Seite neu laden (einmal)
+  let _reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(_reloaded) return;
+    _reloaded = true;
+    location.reload();
+  });
+}
+
+function showUpdatePrompt(){
+  const existing = document.getElementById('updateBanner');
+  if(existing) return;
+  const div = document.createElement('div');
+  div.id = 'updateBanner';
+  div.style.cssText = 'position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:10px;right:10px;background:var(--green);color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);z-index:200;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px';
+  div.innerHTML = '<span>🆕 Neue Version verfügbar</span>'+
+    '<button style="background:#fff;color:var(--green);border:0;border-radius:6px;padding:8px 14px;font-weight:600;font-size:13px" onclick="applyUpdate()">Neu laden</button>';
+  document.body.appendChild(div);
+}
+
+function applyUpdate(){
+  const banner = document.getElementById('updateBanner');
+  if(banner) banner.remove();
+  if(_swRegistration && _swRegistration.waiting){
+    _swRegistration.waiting.postMessage({type: 'SKIP_WAITING'});
+  } else {
+    location.reload();
+  }
 }
 
 /* ===================================================================
@@ -1134,10 +1317,8 @@ function init(){
   switchScreen('tiere');
   syncNow();
 
-  // Service Worker registrieren (PWA)
-  if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
-  }
+  registerSW();
+
   // Auto-Sync beim Fokus-Wechsel
   window.addEventListener('focus', ()=>{ if(getPin()) syncNow(); });
   // Regelmässig alle 5 Minuten
