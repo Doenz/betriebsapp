@@ -315,11 +315,12 @@ let kalFilter = 'alle';
    HELPER
 =================================================================== */
 const $ = s => document.querySelector(s);
-const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const deCH = d => { if(!d) return ''; const x = new Date(d); if(isNaN(x)) return d; return x.toLocaleDateString('de-CH'); };
-const toISO = d => { if(!d) return ''; if(/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0,10); const x = new Date(d); return isNaN(x)?'':x.toISOString().slice(0,10); };
-const ageDays = d => { if(!d) return null; const x = new Date(d); if(isNaN(x)) return null; return Math.floor((Date.now()-x.getTime())/86400000); };
-const normTvd = t => String(t||'').replace(/\D/g,'');
+// Utility-Funktionen aus dem Shared Module
+const esc = BS.esc;
+const deCH = BS.deCH;
+const toISO = BS.toISO;
+const ageDays = BS.ageDays;
+const normTvd = BS.normTvd;
 
 function toast(msg){
   const el = $('#toast');
@@ -488,16 +489,8 @@ async function syncNow(){
   }
 }
 
-// Macht aus kryptischen HTTP-Errors lesbare Meldungen
-function interpretFetchError(e){
-  const msg = (e && e.message) || String(e);
-  if(/HTTP 401|HTTP 403/.test(msg)) return 'Falscher PIN oder Key';
-  if(/HTTP 404/.test(msg)) return 'Tabelle fehlt in Supabase';
-  if(/HTTP 5\d\d/.test(msg)) return 'Supabase-Server-Fehler';
-  if(/Failed to fetch|NetworkError|Network request failed/i.test(msg)) return 'Keine Internet-Verbindung';
-  if(/Kein PIN/.test(msg)) return 'Kein PIN gesetzt';
-  return msg;
-}
+// Fehler-Interpretation aus dem Shared Module
+const interpretFetchError = BS.interpretFetchError;
 
 /* ===================================================================
    DIAGNOSE: Schritt-für-Schritt prüfen was klemmt
@@ -608,37 +601,20 @@ function setStatus(ok, msg){
 }
 
 /* ===================================================================
-   KATEGORIE-LOGIK (aus Haupt-App übernommen)
+   KATEGORIE- UND STAMMDATEN-LOGIK
+   Die Kernlogik liegt im Shared Module (BS.*). Hier nur dünne Wrapper,
+   damit die App-interne `data`-Variable automatisch mitgegeben wird.
 =================================================================== */
-function gveKategorie(tier){
-  if(tier.kategorie && tier.kategorie!=='auto') return tier.kategorie;
-  if(tier.erstkalbe) return 'Kuh';
-  const age = ageDays(tier.gebDatum);
-  if(age==null) return 'Kuh';
-  if(age>425) return 'Rind';
-  return 'Kalb';
-}
-// Stammdaten-Tiere: nicht geschlachtet UND nicht manuell als Abgang markiert
-function istGeschlachtet(tvd){
-  if(!tvd) return false;
-  const n = normTvd(tvd);
-  return (data.schlachtungen||[]).some(s => normTvd(s.tvd)===n);
-}
+const gveKategorie = BS.gveKategorie;
+const stripAlpPlus = BS.stripAlpPlus;
+const addAlpPlus = BS.addAlpPlus;
+const istGeschlachtet = (tvd) => BS.istGeschlachtet(tvd, data);
+const findTier = (tvd) => BS.findTier(data, tvd);
+const hatKalb = (kuhTvd) => BS.hatKalb(data, kuhTvd);
+const updateAlpKalbStatus = (kuhTvd) => BS.updateAlpKalbStatus(data, kuhTvd);
+// Mobile-spezifisch: filtert auch auf !abgang
 function aktiveTiere(){
   return (data.tiere||[]).filter(t => !istGeschlachtet(t.tvd) && !t.abgang);
-}
-function findTier(tvd){ const n=normTvd(tvd); return data.tiere.find(t=>normTvd(t.tvd)===n); }
-function hatKalb(kuhTvd){
-  const n = normTvd(kuhTvd);
-  return data.tiere.some(k=>normTvd(k.mutterTvd)===n && gveKategorie(k)==='Kalb' && !istGeschlachtet(k.tvd) && !k.abgang);
-}
-function stripAlpPlus(a){ return a==='Portein+'?'Portein':a==='Sarn+'?'Sarn':a==='Merla+'?'Merla':a||''; }
-function addAlpPlus(a){ return a==='Portein'?'Portein+':a==='Sarn'?'Sarn+':a==='Merla'?'Merla+':a||''; }
-function updateAlpKalbStatus(kuhTvd){
-  const t = findTier(kuhTvd);
-  if(!t || !t.alp || gveKategorie(t)==='Kalb') return;
-  const basis = stripAlpPlus(t.alp);
-  t.alp = hatKalb(kuhTvd) ? addAlpPlus(basis) : basis;
 }
 
 function alpBadge(alp){
@@ -1143,7 +1119,10 @@ async function saveJournal(editStoreKey, editIndex){
   if(!feldId){ alert('Feld wählen!'); return; }
   if(!datum){ alert('Datum eingeben!'); return; }
 
+  // ID generieren (damit Edit/Delete in der Haupt-App auch funktioniert)
+  const newId = 'e' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   const j = {
+    id: newId,
     datum,
     bearFlaeche: parseInt($('#jfFlaeche').value)||0,
     guelle: parseFloat($('#jfGuelle').value)||0,
@@ -1162,11 +1141,13 @@ async function saveJournal(editStoreKey, editIndex){
   const isEdit = (editStoreKey !== undefined && editIndex !== undefined);
 
   if(isEdit){
-    // Evtl. Jahr-Wechsel: wenn das neue Datum in anderem Jahr liegt, in neuen Key umziehen
+    // Bestehende ID erhalten (sonst wäre der Eintrag nach Sync ein anderer)
     const jahrNeu = datum.slice(0,4);
     const storeKeyNeu = jahrNeu + '_' + feldId;
     const alt = data.wiesenEntries[editStoreKey];
     if(alt && alt[editIndex]){
+      const altId = alt[editIndex].id;
+      if(altId) j.id = altId;
       if(storeKeyNeu === editStoreKey){
         alt[editIndex] = j;
       } else {
@@ -1488,7 +1469,7 @@ async function forceUpdate(){
 /* ===================================================================
    SERVICE WORKER mit Update-Handling
 =================================================================== */
-const APP_VERSION = '2026-04-21-3';
+const APP_VERSION = '2026-04-21-5';
 let _swRegistration = null;
 
 function registerSW(){
@@ -1570,4 +1551,4 @@ init();
 </script>
 </body>
 </html>
-                              
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
