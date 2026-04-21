@@ -587,11 +587,19 @@ function gveKategorie(tier){
   if(age>425) return 'Rind';
   return 'Kalb';
 }
-function aktiveTiere(){ return data.tiere.filter(t=>!t.abgang); }
+// Stammdaten-Tiere: nicht geschlachtet UND nicht manuell als Abgang markiert
+function istGeschlachtet(tvd){
+  if(!tvd) return false;
+  const n = normTvd(tvd);
+  return (data.schlachtungen||[]).some(s => normTvd(s.tvd)===n);
+}
+function aktiveTiere(){
+  return (data.tiere||[]).filter(t => !istGeschlachtet(t.tvd) && !t.abgang);
+}
 function findTier(tvd){ const n=normTvd(tvd); return data.tiere.find(t=>normTvd(t.tvd)===n); }
 function hatKalb(kuhTvd){
   const n = normTvd(kuhTvd);
-  return data.tiere.some(k=>normTvd(k.mutterTvd)===n && gveKategorie(k)==='Kalb' && !k.abgang);
+  return data.tiere.some(k=>normTvd(k.mutterTvd)===n && gveKategorie(k)==='Kalb' && !istGeschlachtet(k.tvd) && !k.abgang);
 }
 function stripAlpPlus(a){ return a==='Portein+'?'Portein':a==='Sarn+'?'Sarn':a==='Merla+'?'Merla':a||''; }
 function addAlpPlus(a){ return a==='Portein'?'Portein+':a==='Sarn'?'Sarn+':a==='Merla'?'Merla+':a||''; }
@@ -907,8 +915,9 @@ function journalKurz(j){
 function showFeldDetail(id){
   const f = (data.felder||[]).find(x=>x.id===id);
   if(!f) return;
-  const eintraege = getFeldEintraege(id).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
-  const listHtml = eintraege.length ? eintraege.slice(0,15).map(j => {
+  const eintraegeAll = getFeldEintraegeMitRef(id).sort((a,b)=>(b.entry.datum||'').localeCompare(a.entry.datum||''));
+  const listHtml = eintraegeAll.length ? eintraegeAll.slice(0,30).map(item => {
+    const j = item.entry;
     const det = [];
     if(j.bearFlaeche) det.push('Fl. '+j.bearFlaeche+' a');
     if(j.guelle) det.push('Gülle '+j.guelle+' m³');
@@ -916,11 +925,15 @@ function showFeldDetail(id){
     if(j.pflege) det.push('🔧 '+esc(j.pflege));
     if(j.weidenVon && j.weidenBis) det.push('🐄 Weide '+deCH(j.weidenVon)+'–'+deCH(j.weidenBis)+(j.weidenAnzahl?' ('+j.weidenAnzahl+' T.)':''));
     if(j.siloballen) det.push('🟢 '+j.siloballen+' Siloballen');
-    if(j.belueftung) det.push('🌾 '+j.belueftung+' LW Belüftungsheu');
+    const bh = j.belueftungsheu || j.belueftung;
+    if(bh) det.push('🌾 '+bh+' LW Belüftungsheu');
     if(j.bodenheu) det.push('🌾 '+j.bodenheu+' LW Bodenheu');
     if(j.bemerkung) det.push(esc(j.bemerkung));
-    return '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px">'+
-      '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
+    return '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px;cursor:pointer" onclick="closeModal();setTimeout(()=>editJournal(\''+item.storeKey+'\','+item.index+',\''+esc(id)+'\'),100)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
+        '<div style="color:var(--text2);font-size:11px">✏️ bearbeiten ›</div>'+
+      '</div>'+
       '<div style="color:var(--text2)">'+(det.join(' · ')||'—')+'</div>'+
     '</div>';
   }).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge.</div>';
@@ -931,61 +944,95 @@ function showFeldDetail(id){
       'Parzelle: '+esc(f.parzNr||'-')+' · '+esc(f.flaeche||0)+' Aren'+
     '</div>'+
     '<button class="btn btn-primary btn-wide" onclick="closeModal();showJournalForm(\''+esc(id)+'\')">+ Journal-Eintrag erfassen</button>'+
-    '<h2 style="margin-top:20px">Letzte Einträge</h2>'+
+    '<h2 style="margin-top:20px;font-size:16px">Einträge ('+eintraegeAll.length+')</h2>'+
+    '<div style="color:var(--text2);font-size:12px;margin-bottom:8px">Auf einen Eintrag tippen um zu bearbeiten</div>'+
     listHtml+
     '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Schliessen</button>'
   );
 }
 
-function showJournalForm(preFeldId){
+// Liefert Einträge eines Felds mit Referenz (storeKey + index) zum Bearbeiten
+function getFeldEintraegeMitRef(feldId){
+  const we = data.wiesenEntries || {};
+  const out = [];
+  Object.keys(we).forEach(storeKey => {
+    const sep = storeKey.indexOf('_');
+    if(sep < 0) return;
+    if(storeKey.slice(sep+1) !== feldId) return;
+    (we[storeKey]||[]).forEach((entry, index) => {
+      out.push({storeKey, index, entry});
+    });
+  });
+  return out;
+}
+
+// Editiere einen bestehenden Journal-Eintrag
+function editJournal(storeKey, index, feldId){
+  const list = (data.wiesenEntries||{})[storeKey] || [];
+  const entry = list[index];
+  if(!entry){ toast('Eintrag nicht gefunden'); return; }
+  showJournalForm(feldId, {storeKey, index, entry});
+}
+
+function showJournalForm(preFeldId, editCtx){
   const heute = new Date().toISOString().slice(0,10);
   const felder = (data.felder||[]).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   const feldOpts = '<option value="">— Feld wählen —</option>' +
     felder.map(f => '<option value="'+esc(f.id)+'"'+(f.id===preFeldId?' selected':'')+'>'+esc(f.name)+' ('+esc(f.parzNr||'-')+')</option>').join('');
 
+  const e = editCtx ? editCtx.entry : {};
+  const v = (x, def) => (x==null || x===0 ? (def||'') : x);
+  const isEdit = !!editCtx;
+
   openModal(
-    '<h2>🌾 Journal-Eintrag</h2>'+
-    '<div class="field"><label>Feld</label><select id="jfFeld">'+feldOpts+'</select></div>'+
-    '<div class="field"><label>Datum</label><input type="date" id="jfDatum" value="'+heute+'"></div>'+
+    '<h2>🌾 '+(isEdit?'Journal-Eintrag bearbeiten':'Journal-Eintrag')+'</h2>'+
+    '<div class="field"><label>Feld</label><select id="jfFeld"'+(isEdit?' disabled':'')+'>'+feldOpts+'</select></div>'+
+    '<div class="field"><label>Datum</label><input type="date" id="jfDatum" value="'+(e.datum || heute)+'"></div>'+
     '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Bearbeitung</h3>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-      '<div class="field"><label>Gülle (m³)</label><input type="number" id="jfGuelle" step="0.5" inputmode="decimal"></div>'+
-      '<div class="field"><label>Mist (m³)</label><input type="number" id="jfMist" step="0.5" inputmode="decimal"></div>'+
+      '<div class="field"><label>Gülle (m³)</label><input type="number" id="jfGuelle" step="0.5" inputmode="decimal" value="'+v(e.guelle)+'"></div>'+
+      '<div class="field"><label>Mist (m³)</label><input type="number" id="jfMist" step="0.5" inputmode="decimal" value="'+v(e.mist)+'"></div>'+
     '</div>'+
-    '<div class="field"><label>Bearb. Fläche (Aren)</label><input type="number" id="jfFlaeche" step="1" inputmode="numeric"></div>'+
+    '<div class="field"><label>Bearb. Fläche (Aren)</label><input type="number" id="jfFlaeche" step="1" inputmode="numeric" value="'+v(e.bearFlaeche)+'"></div>'+
     '<div class="field"><label>Pflege</label>'+
       '<select id="jfPflege">'+
-        '<option value="">—</option>'+
-        '<option>Schleppen</option><option>Walzen</option><option>Nachsaat</option>'+
-        '<option>Unkrautbekämpfung</option><option>Mäusebekämpfung</option>'+
+        ['', 'Schleppen','Walzen','Nachsaat','Unkrautbekämpfung','Mäusebekämpfung']
+          .map(p=>'<option value="'+p+'"'+(e.pflege===p?' selected':'')+'>'+(p||'—')+'</option>').join('')+
       '</select>'+
     '</div>'+
     '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🐄 Weide</h3>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-      '<div class="field"><label>Weiden von</label><input type="date" id="jfWeidenVon"></div>'+
-      '<div class="field"><label>Weiden bis</label><input type="date" id="jfWeidenBis"></div>'+
+      '<div class="field"><label>Weiden von</label><input type="date" id="jfWeidenVon" value="'+(e.weidenVon||'')+'"></div>'+
+      '<div class="field"><label>Weiden bis</label><input type="date" id="jfWeidenBis" value="'+(e.weidenBis||'')+'"></div>'+
     '</div>'+
-    '<div class="field"><label>Anzahl Tiere</label><input type="number" id="jfWeidenAnzahl" step="1" inputmode="numeric"></div>'+
+    '<div class="field"><label>Anzahl Tiere</label><input type="number" id="jfWeidenAnzahl" step="1" inputmode="numeric" value="'+v(e.weidenAnzahl)+'"></div>'+
     '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🌾 Ernte (Lastwagen / Stück)</h3>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
-      '<div class="field"><label>Siloballen (Stk)</label><input type="number" id="jfSilo" step="1" inputmode="numeric"></div>'+
-      '<div class="field"><label>Belüft.heu (LW)</label><input type="number" id="jfBelueft" step="1" inputmode="numeric"></div>'+
-      '<div class="field"><label>Bodenheu (LW)</label><input type="number" id="jfBoden" step="1" inputmode="numeric"></div>'+
+      '<div class="field"><label>Siloballen (Stk)</label><input type="number" id="jfSilo" step="1" inputmode="numeric" value="'+v(e.siloballen)+'"></div>'+
+      '<div class="field"><label>Belüft.heu (LW)</label><input type="number" id="jfBelueft" step="1" inputmode="numeric" value="'+v(e.belueftungsheu||e.belueftung)+'"></div>'+
+      '<div class="field"><label>Bodenheu (LW)</label><input type="number" id="jfBoden" step="1" inputmode="numeric" value="'+v(e.bodenheu)+'"></div>'+
     '</div>'+
-    '<div class="field"><label>Bemerkung</label><textarea id="jfBem"></textarea></div>'+
-    '<div class="btn-row">'+
-      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
-      '<button class="btn btn-primary" onclick="saveJournal()">Speichern</button>'+
-    '</div>'
+    '<div class="field"><label>Bemerkung</label><textarea id="jfBem">'+esc(e.bemerkung||'')+'</textarea></div>'+
+    (isEdit
+      ? '<div class="btn-row">'+
+          '<button class="btn btn-danger" onclick="deleteJournal(\''+editCtx.storeKey+'\','+editCtx.index+',\''+esc(preFeldId)+'\')">🗑 Löschen</button>'+
+          '<button class="btn btn-primary" onclick="saveJournal(\''+editCtx.storeKey+'\','+editCtx.index+')">Speichern</button>'+
+        '</div>'+
+        '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Abbrechen</button>'
+      : '<div class="btn-row">'+
+          '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+          '<button class="btn btn-primary" onclick="saveJournal()">Speichern</button>'+
+        '</div>')
   );
 }
 
-async function saveJournal(){
-  const feldId = $('#jfFeld').value;
+async function saveJournal(editStoreKey, editIndex){
+  const feldIdEl = $('#jfFeld');
+  const feldId = feldIdEl ? feldIdEl.value : (editStoreKey ? editStoreKey.slice(editStoreKey.indexOf('_')+1) : '');
   const datum = $('#jfDatum').value;
   if(!feldId){ alert('Feld wählen!'); return; }
   if(!datum){ alert('Datum eingeben!'); return; }
-  // Feldnamen exakt wie Hauptapp-Format
+
   const j = {
     datum,
     bearFlaeche: parseInt($('#jfFlaeche').value)||0,
@@ -1001,16 +1048,54 @@ async function saveJournal(){
     bemerkung: $('#jfBem').value
   };
   if(!data.wiesenEntries) data.wiesenEntries = {};
-  const jahr = datum.slice(0,4);
-  const storeKey = jahr + '_' + feldId;
-  if(!data.wiesenEntries[storeKey]) data.wiesenEntries[storeKey] = [];
-  data.wiesenEntries[storeKey].push(j);
+
+  const isEdit = (editStoreKey !== undefined && editIndex !== undefined);
+
+  if(isEdit){
+    // Evtl. Jahr-Wechsel: wenn das neue Datum in anderem Jahr liegt, in neuen Key umziehen
+    const jahrNeu = datum.slice(0,4);
+    const storeKeyNeu = jahrNeu + '_' + feldId;
+    const alt = data.wiesenEntries[editStoreKey];
+    if(alt && alt[editIndex]){
+      if(storeKeyNeu === editStoreKey){
+        alt[editIndex] = j;
+      } else {
+        // Move zwischen Jahres-Keys
+        alt.splice(editIndex, 1);
+        if(alt.length === 0) delete data.wiesenEntries[editStoreKey];
+        if(!data.wiesenEntries[storeKeyNeu]) data.wiesenEntries[storeKeyNeu] = [];
+        data.wiesenEntries[storeKeyNeu].push(j);
+      }
+    }
+  } else {
+    const jahr = datum.slice(0,4);
+    const storeKey = jahr + '_' + feldId;
+    if(!data.wiesenEntries[storeKey]) data.wiesenEntries[storeKey] = [];
+    data.wiesenEntries[storeKey].push(j);
+  }
+
   saveLocal();
   closeModal();
-  toast('Journal-Eintrag gespeichert');
+  toast(isEdit ? 'Eintrag aktualisiert' : 'Journal-Eintrag gespeichert');
   if(currentScreen==='wiesen') renderWiesen();
   try { await cloudPushKey('wiesenEntries'); }
   catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+async function deleteJournal(storeKey, index, feldId){
+  if(!confirm('Journal-Eintrag wirklich löschen?')) return;
+  const list = (data.wiesenEntries||{})[storeKey];
+  if(!list || !list[index]){ toast('Eintrag nicht gefunden'); return; }
+  list.splice(index, 1);
+  if(list.length === 0) delete data.wiesenEntries[storeKey];
+  saveLocal();
+  closeModal();
+  toast('Eintrag gelöscht');
+  // Optional: Feld-Detail neu öffnen, damit man sieht was noch da ist
+  if(feldId) setTimeout(()=>showFeldDetail(feldId), 150);
+  if(currentScreen==='wiesen') renderWiesen();
+  try { await cloudPushKey('wiesenEntries'); }
+  catch(e){ toast('Lokal gelöscht, Cloud-Fehler'); }
 }
 
 /* ===================================================================
@@ -1293,7 +1378,7 @@ async function forceUpdate(){
 /* ===================================================================
    SERVICE WORKER mit Update-Handling
 =================================================================== */
-const APP_VERSION = '2026-04-20-6';
+const APP_VERSION = '2026-04-20-7';
 let _swRegistration = null;
 
 function registerSW(){
