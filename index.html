@@ -290,13 +290,15 @@ body{
   <div class="modal" id="modalContent"></div>
 </div>
 
+<!-- Shared Module: Gemeinsame Funktionen fuer Haupt- und Mobile-App -->
+<script src="shared.js"></script>
 <script>
 /* ===================================================================
-   KONFIG — gleiche Supabase-Verbindung wie die PC-App
+   KONFIG — verwendet jetzt Werte aus dem Shared Module (BS.*)
 =================================================================== */
-const SUPABASE_URL = 'https://glfcazurctiyxmrvbjdy.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_jsQr_GTzKE4jnPEQzEGqmQ_0IQhuTy3';
-const SYNC_ALLOWED = ['tiere','besamungen','behandlungen','schlachtungen','felder','journal','wiesenSettings','wiesenEntries'];
+const SUPABASE_URL = BS.SUPABASE_URL;
+const SUPABASE_KEY = BS.SUPABASE_KEY;
+const SYNC_ALLOWED = BS.SYNC_ALLOWED_KEYS;
 
 /* ===================================================================
    STATE
@@ -412,6 +414,24 @@ async function cloudPull(){
     if(SYNC_ALLOWED.includes(row.id)) data[row.id] = row.payload;
   });
   saveLocal();
+  localStorage.setItem('betriebsapp_last_sync_at', new Date().toISOString());
+}
+
+async function cloudLatestChange(){
+  const r = await cloudFetch('betriebsapp_data?select=id,updated_at,updated_by&order=updated_at.desc&limit=1');
+  if(!r.ok) return null;
+  const rows = await r.json();
+  return rows[0] || null;
+}
+async function checkCloudConflict(){
+  const lastSync = localStorage.getItem('betriebsapp_last_sync_at');
+  const latest = await cloudLatestChange();
+  if(!latest || !latest.updated_at) return {conflict:false};
+  if(!lastSync) return {conflict:true, cloudAt: latest.updated_at, cloudBy: latest.updated_by};
+  if(new Date(latest.updated_at) > new Date(lastSync)){
+    return {conflict:true, cloudAt: latest.updated_at, cloudBy: latest.updated_by, lastSync};
+  }
+  return {conflict:false};
 }
 
 async function cloudPushKey(key){
@@ -426,6 +446,8 @@ async function cloudPushKey(key){
     body: JSON.stringify([{id:key, payload, updated_by:'mobile'}])
   });
   if(!r.ok){ const t = await r.text(); throw new Error('HTTP '+r.status+': '+t); }
+  // Nach erfolgreichem Push: lastSyncAt setzen
+  localStorage.setItem('betriebsapp_last_sync_at', new Date().toISOString());
 }
 
 async function cloudPushAll(){
@@ -441,8 +463,17 @@ async function syncNow(){
   try {
     await cloudPull();
     localStorage.setItem('lastSync', new Date().toISOString());
+    const latest = await cloudLatestChange();
+    const info = latest ? ' · Cloud '+new Date(latest.updated_at).toLocaleTimeString('de-CH')+' '+(latest.updated_by||'') : '';
+    // Gezählter Feedback
+    const counts = [];
+    ['tiere','wiesenEntries','besamungen'].forEach(k=>{
+      const v = data[k];
+      const n = Array.isArray(v) ? v.length : (v && typeof v==='object' ? Object.values(v).reduce((s,a)=>s+(Array.isArray(a)?a.length:0),0) : 0);
+      if(n) counts.push(k+':'+n);
+    });
     setStatus(true, 'OK');
-    toast('☁️ synchronisiert');
+    toast('☁️ sync · '+counts.join(' ')+info);
     if(currentScreen==='tiere') renderTiere();
     else if(currentScreen==='wiesen') renderWiesen();
     else if(currentScreen==='kalender') renderKalender();
@@ -1457,7 +1488,7 @@ async function forceUpdate(){
 /* ===================================================================
    SERVICE WORKER mit Update-Handling
 =================================================================== */
-const APP_VERSION = '2026-04-20-8';
+const APP_VERSION = '2026-04-21-3';
 let _swRegistration = null;
 
 function registerSW(){
@@ -1539,3 +1570,4 @@ init();
 </script>
 </body>
 </html>
+                              
