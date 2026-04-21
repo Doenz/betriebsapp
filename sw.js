@@ -1,4 +1,4 @@
-var VERSION = '2026-04-20-7';
+var VERSION = '2026-04-20-8';
 var CACHE_NAME = 'betriebsapp-mobile-' + VERSION;
 
 var APP_SHELL = [

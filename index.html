@@ -915,40 +915,119 @@ function journalKurz(j){
 function showFeldDetail(id){
   const f = (data.felder||[]).find(x=>x.id===id);
   if(!f) return;
-  const eintraegeAll = getFeldEintraegeMitRef(id).sort((a,b)=>(b.entry.datum||'').localeCompare(a.entry.datum||''));
-  const listHtml = eintraegeAll.length ? eintraegeAll.slice(0,30).map(item => {
-    const j = item.entry;
-    const det = [];
-    if(j.bearFlaeche) det.push('Fl. '+j.bearFlaeche+' a');
-    if(j.guelle) det.push('Gülle '+j.guelle+' m³');
-    if(j.mist) det.push('Mist '+j.mist+' m³');
-    if(j.pflege) det.push('🔧 '+esc(j.pflege));
-    if(j.weidenVon && j.weidenBis) det.push('🐄 Weide '+deCH(j.weidenVon)+'–'+deCH(j.weidenBis)+(j.weidenAnzahl?' ('+j.weidenAnzahl+' T.)':''));
-    if(j.siloballen) det.push('🟢 '+j.siloballen+' Siloballen');
-    const bh = j.belueftungsheu || j.belueftung;
-    if(bh) det.push('🌾 '+bh+' LW Belüftungsheu');
-    if(j.bodenheu) det.push('🌾 '+j.bodenheu+' LW Bodenheu');
-    if(j.bemerkung) det.push(esc(j.bemerkung));
-    return '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px;cursor:pointer" onclick="closeModal();setTimeout(()=>editJournal(\''+item.storeKey+'\','+item.index+',\''+esc(id)+'\'),100)">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center">'+
-        '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
-        '<div style="color:var(--text2);font-size:11px">✏️ bearbeiten ›</div>'+
+  const eintraegeAll = getFeldEintraegeMitRef(id);
+
+  // Einträge nach Jahr gruppieren
+  const byJahr = {};
+  eintraegeAll.forEach(item => {
+    const jahr = (item.entry.datum||'').slice(0,4) || '—';
+    if(!byJahr[jahr]) byJahr[jahr] = [];
+    byJahr[jahr].push(item);
+  });
+  const jahre = Object.keys(byJahr).sort().reverse(); // neueste zuerst
+  const aktuellesJahr = new Date().getFullYear().toString();
+
+  // Aufgeklappte Jahre: Standardmässig aktuelles + letztes Jahr offen
+  if(!window._feldOffenJahre) window._feldOffenJahre = {};
+  const feldOpenKey = id;
+  if(!window._feldOffenJahre[feldOpenKey]){
+    window._feldOffenJahre[feldOpenKey] = {};
+    jahre.forEach((y,i) => { window._feldOffenJahre[feldOpenKey][y] = (i === 0); });
+  }
+  const offen = window._feldOffenJahre[feldOpenKey];
+
+  // Nutzungen-Chips
+  let nutzungenHtml = '';
+  if(f.nutzungen && f.nutzungen.length){
+    nutzungenHtml = '<div style="margin:10px 0;padding:10px;background:var(--green-l);border-radius:8px">'+
+      '<div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Nutzungen</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      f.nutzungen.map(n => {
+        const dCol = n.duengung==='ja'?'#2E7D32':n.duengung==='leicht'?'#FF8F00':'#C62828';
+        const sCol = n.schnitt==='ja'?'#2E7D32':'#C62828';
+        const dIcon = n.duengung==='ja'?'✓':n.duengung==='leicht'?'≈':'✗';
+        const sIcon = n.schnitt==='ja'?'✓':'✗';
+        const szpTxt = n.szp ? ' · SZP '+esc(n.szp) : '';
+        return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;background:#fff;border:1px solid #d0d8c0;border-radius:14px">'+
+          '<span style="font-weight:600">'+esc(n.typ||'-')+'</span>'+
+          '<b>'+Math.round(n.flaeche||0)+'a</b>'+
+          '<span style="color:'+dCol+';font-weight:700" title="Düngung: '+esc(n.duengung||'-')+'">D'+dIcon+'</span>'+
+          '<span style="color:'+sCol+';font-weight:700" title="Schnitt: '+esc(n.schnitt||'-')+'">S'+sIcon+'</span>'+
+          (szpTxt?'<span style="color:var(--text2)">'+szpTxt+'</span>':'')+
+        '</span>';
+      }).join('')+
+      '</div></div>';
+  }
+
+  // Einträge pro Jahr (sortiert, einklappbar)
+  const jahreHtml = jahre.length ? jahre.map(jahr => {
+    const isOpen = !!offen[jahr];
+    const liste = byJahr[jahr].sort((a,b)=>(b.entry.datum||'').localeCompare(a.entry.datum||''));
+    // Jahres-Summary: Anzahl + wichtigste Summen
+    const sumG = liste.reduce((s,it)=>s+(parseFloat(it.entry.guelle)||0),0);
+    const sumM = liste.reduce((s,it)=>s+(parseFloat(it.entry.mist)||0),0);
+    const sumSilo = liste.reduce((s,it)=>s+(parseInt(it.entry.siloballen)||0),0);
+    const sumBH = liste.reduce((s,it)=>s+(parseInt(it.entry.belueftungsheu||it.entry.belueftung)||0),0);
+    const sumBod = liste.reduce((s,it)=>s+(parseInt(it.entry.bodenheu)||0),0);
+    const summ = [];
+    if(sumG) summ.push(sumG.toFixed(0)+' m³ Gülle');
+    if(sumM) summ.push(sumM.toFixed(0)+' m³ Mist');
+    if(sumSilo) summ.push(sumSilo+' Silo');
+    if(sumBH) summ.push(sumBH+' BH');
+    if(sumBod) summ.push(sumBod+' BodH');
+    const summTxt = summ.length ? summ.join(' · ') : '';
+
+    const eintraegeHtml = liste.map(item => {
+      const j = item.entry;
+      const det = [];
+      if(j.bearFlaeche) det.push('Fl. '+j.bearFlaeche+' a');
+      if(j.guelle) det.push('Gülle '+j.guelle+' m³');
+      if(j.mist) det.push('Mist '+j.mist+' m³');
+      if(j.pflege) det.push('🔧 '+esc(j.pflege));
+      if(j.weidenVon && j.weidenBis) det.push('🐄 Weide '+deCH(j.weidenVon)+'–'+deCH(j.weidenBis)+(j.weidenAnzahl?' ('+j.weidenAnzahl+' T.)':''));
+      if(j.siloballen) det.push('🟢 '+j.siloballen+' Silo');
+      const bh = j.belueftungsheu || j.belueftung;
+      if(bh) det.push('🌾 '+bh+' LW Belüftungsheu');
+      if(j.bodenheu) det.push('🌾 '+j.bodenheu+' LW Bodenheu');
+      if(j.bemerkung) det.push(esc(j.bemerkung));
+      return '<div style="padding:8px 10px;background:var(--gray);border-radius:6px;margin-bottom:6px;font-size:13px;cursor:pointer" onclick="closeModal();setTimeout(()=>editJournal(\''+item.storeKey+'\','+item.index+',\''+esc(id)+'\'),100)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center">'+
+          '<div style="font-weight:600">'+deCH(j.datum)+'</div>'+
+          '<div style="color:var(--text2);font-size:11px">✏️ ›</div>'+
+        '</div>'+
+        '<div style="color:var(--text2)">'+(det.join(' · ')||'—')+'</div>'+
+      '</div>';
+    }).join('');
+
+    return '<div style="margin-bottom:10px">'+
+      '<div onclick="toggleFeldJahr(\''+esc(id)+'\',\''+jahr+'\')" style="cursor:pointer;user-select:none;padding:10px 12px;background:'+(isOpen?'var(--green)':'var(--gray)')+';color:'+(isOpen?'#fff':'var(--text)')+';border-radius:8px;display:flex;align-items:center;justify-content:space-between">'+
+        '<div style="font-weight:700">'+(isOpen?'▼':'▶')+' '+esc(jahr)+' <span style="font-weight:400;opacity:.85">('+liste.length+' Einträge)</span></div>'+
+        (summTxt?'<div style="font-size:11px;opacity:.9;text-align:right;max-width:60%">'+esc(summTxt)+'</div>':'')+
       '</div>'+
-      '<div style="color:var(--text2)">'+(det.join(' · ')||'—')+'</div>'+
+      (isOpen ? '<div style="margin-top:6px">'+eintraegeHtml+'</div>' : '')+
     '</div>';
   }).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge.</div>';
 
   openModal(
     '<h2>'+esc(f.name||'')+'</h2>'+
-    '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">'+
-      'Parzelle: '+esc(f.parzNr||'-')+' · '+esc(f.flaeche||0)+' Aren'+
+    '<div style="color:var(--text2);font-size:13px;margin-bottom:8px">'+
+      'Parzelle: '+esc(f.parzNr||'-')+' · '+esc(f.flaeche||0)+' Aren · Total '+eintraegeAll.length+' Einträge'+
     '</div>'+
-    '<button class="btn btn-primary btn-wide" onclick="closeModal();showJournalForm(\''+esc(id)+'\')">+ Journal-Eintrag erfassen</button>'+
-    '<h2 style="margin-top:20px;font-size:16px">Einträge ('+eintraegeAll.length+')</h2>'+
-    '<div style="color:var(--text2);font-size:12px;margin-bottom:8px">Auf einen Eintrag tippen um zu bearbeiten</div>'+
-    listHtml+
+    nutzungenHtml+
+    '<button class="btn btn-primary btn-wide" style="margin:12px 0" onclick="closeModal();showJournalForm(\''+esc(id)+'\')">+ Journal-Eintrag erfassen</button>'+
+    '<h2 style="margin-top:16px;font-size:16px">Einträge nach Jahr</h2>'+
+    '<div style="color:var(--text2);font-size:12px;margin-bottom:8px">Jahr antippen zum Auf- und Zuklappen. Eintrag antippen zum Bearbeiten.</div>'+
+    jahreHtml+
     '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Schliessen</button>'
   );
+}
+
+function toggleFeldJahr(feldId, jahr){
+  if(!window._feldOffenJahre) window._feldOffenJahre = {};
+  if(!window._feldOffenJahre[feldId]) window._feldOffenJahre[feldId] = {};
+  window._feldOffenJahre[feldId][jahr] = !window._feldOffenJahre[feldId][jahr];
+  closeModal();
+  setTimeout(()=>showFeldDetail(feldId), 50);
 }
 
 // Liefert Einträge eines Felds mit Referenz (storeKey + index) zum Bearbeiten
@@ -1378,7 +1457,7 @@ async function forceUpdate(){
 /* ===================================================================
    SERVICE WORKER mit Update-Handling
 =================================================================== */
-const APP_VERSION = '2026-04-20-7';
+const APP_VERSION = '2026-04-20-8';
 let _swRegistration = null;
 
 function registerSW(){
