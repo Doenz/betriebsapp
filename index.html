@@ -296,6 +296,7 @@ body{
 /* ===================================================================
    KONFIG — verwendet jetzt Werte aus dem Shared Module (BS.*)
 =================================================================== */
+const APP_VERSION = '2026-04-22-1';
 const SUPABASE_URL = BS.SUPABASE_URL;
 const SUPABASE_KEY = BS.SUPABASE_KEY;
 const SYNC_ALLOWED = BS.SYNC_ALLOWED_KEYS;
@@ -682,10 +683,27 @@ function renderTiere(){
         verbindung = '<div style="font-size:12px;color:var(--blue);margin-top:3px">↓ Kalb'+(kaelber.length>1?'er':'')+' ('+kaelber.length+'): '+namen+'</div>';
       }
     }
+    // Erwarteter Kalbetermin (nächster, Datum in der Zukunft, TU nicht 'nicht trächtig')
+    let kalbeLine = '';
+    if(kat!=='Kalb'){
+      const heuteISO = new Date().toISOString().slice(0,10);
+      const zukunft = data.besamungen
+        .filter(b => normTvd(b.tvd)===normTvd(t.tvd))
+        .filter(b => b.kalbetermin && b.kalbetermin >= heuteISO)
+        .filter(b => (b.tuResult||'').toLowerCase() !== 'nicht trächtig')
+        .sort((a,b)=>(a.kalbetermin||'').localeCompare(b.kalbetermin||''));
+      if(zukunft.length){
+        const kt = zukunft[0];
+        const tageBis = Math.ceil((new Date(kt.kalbetermin) - new Date())/86400000);
+        const farbe = tageBis<=21 ? 'var(--red)' : tageBis<=60 ? 'var(--orange)' : 'var(--text2)';
+        kalbeLine = '<div style="font-size:12px;color:'+farbe+';margin-top:3px;font-weight:600">🐄 Kalbe: '+deCH(kt.kalbetermin)+' (noch '+tageBis+' T)</div>';
+      }
+    }
     return '<div class="list-item" onclick="showTierDetail('+idx+')">'+
       '<div class="main">'+
         '<div class="name">'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</div>'+
         '<div class="sub">'+esc(t.tvd||'')+' · '+katBadge+' · '+esc(t.gruppe||'-')+' · '+ageStr+'</div>'+
+        kalbeLine+
         verbindung+
       '</div>'+
       '<div class="arr">›</div>'+
@@ -702,7 +720,30 @@ function showTierDetail(idx){
   if(!t) return;
   const kat = gveKategorie(t);
   const age = ageDays(t.gebDatum);
+  const weiblich = (t.geschlecht||'').toLowerCase().includes('weib');
   const besas = data.besamungen.filter(b=>normTvd(b.tvd)===normTvd(t.tvd)).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+
+  // Erwarteter Kalbetermin als prominenter Banner
+  let kalbeBanner = '';
+  if(kat!=='Kalb'){
+    const heuteISO = new Date().toISOString().slice(0,10);
+    const zukunft = besas
+      .filter(b => b.kalbetermin && b.kalbetermin >= heuteISO)
+      .filter(b => (b.tuResult||'').toLowerCase() !== 'nicht trächtig')
+      .sort((a,b)=>(a.kalbetermin||'').localeCompare(b.kalbetermin||''));
+    if(zukunft.length){
+      const kt = zukunft[0];
+      const tageBis = Math.ceil((new Date(kt.kalbetermin) - new Date())/86400000);
+      const bg = tageBis<=21 ? 'var(--red-l)' : tageBis<=60 ? 'var(--orange-l)' : 'var(--blue-l)';
+      const col = tageBis<=21 ? 'var(--red)' : tageBis<=60 ? 'var(--orange)' : 'var(--blue)';
+      kalbeBanner =
+        '<div style="background:'+bg+';padding:12px;border-radius:8px;margin-bottom:12px;border-left:4px solid '+col+'">'+
+        '<div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🐄 Erwarteter Kalbetermin</div>'+
+        '<div style="font-size:18px;font-weight:700;color:'+col+';margin-top:2px">'+deCH(kt.kalbetermin)+'</div>'+
+        '<div style="font-size:13px;color:var(--text2);margin-top:2px">noch '+tageBis+' Tage'+(kt.stier?' · Stier: '+esc(kt.stier):'')+(kt.tuResult?' · TU: '+esc(kt.tuResult):'')+'</div>'+
+        '</div>';
+    }
+  }
   const besaHtml = besas.length ? besas.slice(0,5).map(b =>
     '<div style="border-left:3px solid '+(b.nurBrunst?'var(--orange)':'var(--blue)')+';padding:6px 10px;margin-bottom:6px;background:var(--gray);border-radius:4px;">'+
     '<div style="font-size:13px;font-weight:600">'+deCH(b.datum)+(b.nurBrunst?' – 🔴 Brunst':' – '+esc(b.stier||'?'))+'</div>'+
@@ -743,14 +784,39 @@ function showTierDetail(idx){
   }
   if(!verwandtHtml) verwandtHtml = '<div style="color:var(--text2);font-size:13px">Keine Verwandtschaft erfasst.</div>';
 
+  // Impfblöcke konditional: Kälbergrippe bei Kalb, Mutterschutz bei Kuh/Rind weiblich
+  let impfBlock = '';
+  if(kat==='Kalb'){
+    impfBlock +=
+      '<h2 style="margin-top:20px;font-size:16px">🦠 Kälbergrippe-Impfung</h2>'+
+      '<div class="field"><label>Impfdatum</label><input type="date" id="tdImpfKGDatum" value="'+esc(t.impfKGrippeDatum||'')+'"></div>'+
+      '<div class="field"><label>Impfstoff</label><input type="text" id="tdImpfKGImpfstoff" list="mImpfstoffKGList" value="'+esc(t.impfKGrippeImpfstoff||'')+'" placeholder="z.B. Bovalto Respi">'+
+        '<datalist id="mImpfstoffKGList">'+
+        '<option value="Bovalto Respi"><option value="Bovalto Respi IntraNasal"><option value="Bovilis Bovipast RSP"><option value="Rispoval 3"><option value="Rispoval RS+PI3 IntraNasal"><option value="Bovigrip">'+
+        '</datalist></div>'+
+      '<div class="field"><label>Bemerkung</label><input type="text" id="tdImpfKGBem" value="'+esc(t.impfKGrippeBem||'')+'" placeholder="z.B. 1. Impfung"></div>';
+  }
+  if(kat!=='Kalb' && weiblich){
+    impfBlock +=
+      '<h2 style="margin-top:20px;font-size:16px">🛡️ Mutterschutz-Impfung</h2>'+
+      '<div class="field"><label>Impfdatum</label><input type="date" id="tdImpfMUDatum" value="'+esc(t.impfMutterDatum||'')+'"></div>'+
+      '<div class="field"><label>Impfstoff</label><input type="text" id="tdImpfMUImpfstoff" list="mImpfstoffMUList" value="'+esc(t.impfMutterImpfstoff||'')+'" placeholder="z.B. Rotavec Corona">'+
+        '<datalist id="mImpfstoffMUList">'+
+        '<option value="Bovilis Rotavec Corona"><option value="Rotavec Corona"><option value="Bovigen Scour"><option value="Trivacton 6"><option value="Scourguard 4 KC">'+
+        '</datalist></div>'+
+      '<div class="field"><label>Bemerkung</label><input type="text" id="tdImpfMUBem" value="'+esc(t.impfMutterBem||'')+'" placeholder="z.B. 6 Wochen vor Kalbung"></div>';
+  }
+
   openModal(
     '<h2>'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</h2>'+
     '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">'+
       'TVD: '+esc(t.tvd)+' · '+esc(kat)+' · '+(age!=null?age+' Tage':'—')+
     '</div>'+
+    kalbeBanner+
     '<div class="field"><label>Alp</label><select id="tdAlp">'+alpOptions+'</select></div>'+
     '<div class="field"><label>Gruppe</label><select id="tdGruppe">'+gruppeOptions+'</select></div>'+
     '<div class="field"><label>Bemerkungen</label><textarea id="tdBem">'+esc(t.bemerkungen||'')+'</textarea></div>'+
+    impfBlock+
     '<div class="btn-row">'+
       '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
       '<button class="btn btn-primary" onclick="saveTierDetail('+idx+')">Speichern</button>'+
@@ -789,6 +855,19 @@ async function saveTierDetail(idx){
   t.alp = $('#tdAlp').value;
   t.gruppe = $('#tdGruppe').value;
   t.bemerkungen = $('#tdBem').value;
+  // Impfungen (Felder existieren nur konditional je nach Kategorie/Geschlecht)
+  const kgDatum = $('#tdImpfKGDatum');
+  if(kgDatum){
+    t.impfKGrippeDatum = kgDatum.value;
+    t.impfKGrippeImpfstoff = ($('#tdImpfKGImpfstoff').value||'').trim();
+    t.impfKGrippeBem = ($('#tdImpfKGBem').value||'').trim();
+  }
+  const muDatum = $('#tdImpfMUDatum');
+  if(muDatum){
+    t.impfMutterDatum = muDatum.value;
+    t.impfMutterImpfstoff = ($('#tdImpfMUImpfstoff').value||'').trim();
+    t.impfMutterBem = ($('#tdImpfMUBem').value||'').trim();
+  }
   // Automatisch +/- je nach Kalb
   updateAlpKalbStatus(t.tvd);
   // Gruppe und Alp an Kälber vererben (wenn Kuh/Rind)
