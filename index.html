@@ -232,6 +232,16 @@ body{
       <div id="kalList"></div>
     </div>
 
+    <!-- BEHANDLUNGEN -->
+    <div class="screen" id="sc-beh">
+      <div class="search-bar">
+        <span style="color:#bbb;padding-left:6px">🔍</span>
+        <input type="text" id="behSearch" placeholder="Suche Tier, Kategorie..." oninput="renderBeh()">
+      </div>
+      <div class="chips" id="behChips"></div>
+      <div id="behList"></div>
+    </div>
+
     <!-- SCHLACHTUNGEN -->
     <div class="screen" id="sc-schlacht">
       <div class="search-bar">
@@ -259,7 +269,7 @@ body{
       <div class="card">
         <h2 style="margin:0 0 8px">ℹ️ Info</h2>
         <p style="color:var(--text2);font-size:13px;margin:0">
-          Diese App greift nur auf <strong>Tiere, Wiesen und Kalender</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
+          Diese App greift auf <strong>Tiere, Wiesen, Kalender, Behandlungen und Schlachtungen</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
         </p>
         <p style="color:var(--text2);font-size:12px;margin:8px 0 0">
           Letzter Sync: <span id="lastSyncAt">nie</span>
@@ -274,6 +284,7 @@ body{
     <button class="tab active" data-screen="tiere" onclick="switchScreen('tiere')"><span class="ico">🐄</span>Tiere</button>
     <button class="tab" data-screen="wiesen" onclick="switchScreen('wiesen')"><span class="ico">🌾</span>Wiesen</button>
     <button class="tab" data-screen="kalender" onclick="switchScreen('kalender')"><span class="ico">📅</span>Kalender</button>
+    <button class="tab" data-screen="beh" onclick="switchScreen('beh')"><span class="ico">💊</span>Beh.</button>
     <button class="tab" data-screen="schlacht" onclick="switchScreen('schlacht')"><span class="ico">🔪</span>Schlacht</button>
     <button class="tab" data-screen="mehr" onclick="switchScreen('mehr')"><span class="ico">⚙️</span>Mehr</button>
   </div>
@@ -296,7 +307,7 @@ body{
 /* ===================================================================
    KONFIG — verwendet jetzt Werte aus dem Shared Module (BS.*)
 =================================================================== */
-const APP_VERSION = '2026-04-22-1';
+const APP_VERSION = '2026-04-23-1';
 const SUPABASE_URL = BS.SUPABASE_URL;
 const SUPABASE_KEY = BS.SUPABASE_KEY;
 const SYNC_ALLOWED = BS.SYNC_ALLOWED_KEYS;
@@ -311,6 +322,7 @@ let data = {
 let currentScreen = 'tiere';
 let tiereFilter = 'alle';
 let kalFilter = 'alle';
+let behFilter = 'offen';
 
 /* ===================================================================
    HELPER
@@ -346,16 +358,17 @@ function switchScreen(name){
   const scEl = $('#sc-'+name);
   if(scEl) scEl.classList.add('active');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.screen===name));
-  const titles = {tiere:'Tiere', wiesen:'Wiesen', kalender:'Kalender', schlacht:'Schlachtungen', mehr:'Mehr'};
+  const titles = {tiere:'Tiere', wiesen:'Wiesen', kalender:'Kalender', beh:'Behandlungen', schlacht:'Schlachtungen', mehr:'Mehr'};
   $('#screenTitle').textContent = titles[name] || 'Betriebsapp';
   // FAB nur wo sinnvoll
   const fab = $('#fab');
-  if(name==='tiere' || name==='wiesen') fab.style.display='flex';
+  if(name==='tiere' || name==='wiesen' || name==='beh') fab.style.display='flex';
   else fab.style.display='none';
   // Render
   if(name==='tiere') renderTiere();
   if(name==='wiesen') renderWiesen();
   if(name==='kalender') renderKalender();
+  if(name==='beh') renderBeh();
   if(name==='schlacht') renderSchlacht();
   if(name==='mehr') renderMehr();
 }
@@ -363,6 +376,7 @@ function switchScreen(name){
 function fabAction(){
   if(currentScreen==='tiere') showBesamungForm();
   else if(currentScreen==='wiesen') showJournalForm();
+  else if(currentScreen==='beh') showBehForm();
 }
 
 /* ===================================================================
@@ -762,8 +776,18 @@ function showTierDetail(idx){
 
   const alpOptions = ['','Portein+','Sarn+','Merla+','Portein','Sarn','Merla','Portein-']
     .map(a => '<option value="'+a+'"'+(t.alp===a?' selected':'')+'>'+(a||'—')+'</option>').join('');
-  const gruppeOptions = ['','A','I']
-    .map(g => '<option value="'+g+'"'+(t.gruppe===g?' selected':'')+'>'+(g||'—')+'</option>').join('');
+  const gruppenListe = [
+    {v:'', l:'—'},
+    {v:'A', l:'A (Stall)'},
+    {v:'I', l:'I (Stall)'},
+    {v:'Merla', l:'Merla'},
+    {v:'Porteineralp1', l:'Porteineralp 1'},
+    {v:'Porteineralp2', l:'Porteineralp 2'},
+    {v:'Heimweide1', l:'Heimweide 1'},
+    {v:'Heimweide2', l:'Heimweide 2'}
+  ];
+  const gruppeOptions = gruppenListe
+    .map(g => '<option value="'+g.v+'"'+(t.gruppe===g.v?' selected':'')+'>'+g.l+'</option>').join('');
 
   // Verwandtschaft
   let verwandtHtml = '';
@@ -832,6 +856,7 @@ function showTierDetail(idx){
     '<h2 style="margin-top:20px;font-size:16px">👪 Verwandtschaft</h2>'+
     verwandtHtml+
     tierSchlachtInfo(t)+
+    tierBehInfo(t.tvd)+
     '<h2 style="margin-top:20px;font-size:16px">Letzte Besamungen/Brunst</h2>'+
     besaHtml+
     '<button class="btn btn-blue btn-wide" style="margin-top:10px" onclick="closeModal();showBesamungForm('+idx+')">+ Besamung / Brunst erfassen</button>'
@@ -947,6 +972,321 @@ function addDays(iso, days){
   const d = new Date(iso);
   d.setDate(d.getDate()+days);
   return d.toISOString().slice(0,10);
+}
+
+/* ===================================================================
+   BEHANDLUNGEN — Render, Form, Abschluss, Historie
+=================================================================== */
+const BEH_KATEGORIEN = ['Mastitis','Klauenprobleme','Milchfieber','Panaritium','Geburtsprobleme','Kälbergrippenimpfung','Mutterschutzimpfung','Spezielles'];
+
+function behKatColor(kat){
+  return ({
+    'Mastitis':'red',
+    'Klauenprobleme':'orange',
+    'Milchfieber':'blue',
+    'Panaritium':'gray',
+    'Geburtsprobleme':'red',
+    'Kälbergrippenimpfung':'green',
+    'Mutterschutzimpfung':'green',
+    'Spezielles':'gray'
+  })[kat]||'gray';
+}
+
+function gruppiereFaelle(){
+  // Liefert Array von Fällen (gruppiert nach fallId), sortiert nach Beginn absteigend.
+  const faelle = {};
+  (data.behandlungen||[]).forEach((b,i) => {
+    const fid = b.fallId || ('SOLO_'+i);
+    if(!faelle[fid]){
+      faelle[fid] = {
+        fallId:fid, tvd:b.tvd, name:b.name, kategorie:b.kategorie,
+        beginn:b.datum, letzte:b.datum, abschluss:'', anzahl:0, kosten:0,
+        abgeschlossen:!!b.fallAbgeschlossen, istSolo:!b.fallId,
+        tierarzt:b.tierarzt||'',
+        eintraege:[]
+      };
+    }
+    const f = faelle[fid];
+    f.anzahl++;
+    f.kosten += (b.kosten||0);
+    if((b.datum||'') < (f.beginn||'')) f.beginn = b.datum;
+    if((b.datum||'') > (f.letzte||'')) f.letzte = b.datum;
+    if(b.fallAbgeschlossen){
+      f.abgeschlossen = true;
+      if(b.fallAbschlussDatum && (!f.abschluss || b.fallAbschlussDatum > f.abschluss)) f.abschluss = b.fallAbschlussDatum;
+    }
+    if(b.tierarzt && !f.tierarzt) f.tierarzt = b.tierarzt;
+    f.eintraege.push({idx:i, b});
+  });
+  return Object.values(faelle).sort((a,b)=>(b.beginn||'').localeCompare(a.beginn||''));
+}
+
+function renderBeh(){
+  // Filter chips
+  const chipsHtml = [
+    {k:'offen', l:'🟠 Offen'},
+    {k:'abgeschlossen', l:'✅ Abgeschlossen'},
+    {k:'alle', l:'Alle'}
+  ].map(c => '<button class="chip'+(behFilter===c.k?' active':'')+'" onclick="setBehFilter(\''+c.k+'\')">'+c.l+'</button>').join('');
+  $('#behChips').innerHTML = chipsHtml;
+
+  const q = ($('#behSearch').value||'').toLowerCase();
+  let faelle = gruppiereFaelle();
+  if(behFilter==='offen') faelle = faelle.filter(f => !f.abgeschlossen);
+  else if(behFilter==='abgeschlossen') faelle = faelle.filter(f => f.abgeschlossen);
+  if(q) faelle = faelle.filter(f =>
+    (f.name||'').toLowerCase().includes(q) ||
+    (f.tvd||'').includes(q) ||
+    (f.kategorie||'').toLowerCase().includes(q)
+  );
+
+  if(!faelle.length){
+    $('#behList').innerHTML = '<div class="empty"><span class="ico">💊</span>Keine '+(behFilter==='offen'?'offenen Fälle':behFilter==='abgeschlossen'?'abgeschlossenen Fälle':'Behandlungen')+'.</div>';
+    return;
+  }
+
+  $('#behList').innerHTML = faelle.map(f => {
+    const statusBadge = f.abgeschlossen
+      ? '<span class="badge b-green">✅</span>'
+      : '<span class="badge b-orange">🟠 Offen</span>';
+    const dauerTage = f.beginn && (f.abschluss||f.letzte)
+      ? Math.max(0, Math.floor((new Date(f.abschluss||f.letzte) - new Date(f.beginn))/86400000))
+      : 0;
+    const dauerTxt = f.abgeschlossen ? (dauerTage+' T') : (dauerTage+' T laufend');
+    const katC = behKatColor(f.kategorie);
+    return '<div class="list-item" onclick="showFallDetail(\''+esc(f.fallId)+'\')">'+
+      '<div class="main">'+
+        '<div class="name">'+esc(f.name||'(ohne Name)')+' '+statusBadge+'</div>'+
+        '<div class="sub">'+
+          '<span class="badge b-'+katC+'">'+esc(f.kategorie||'-')+'</span> · '+
+          deCH(f.beginn)+' · '+f.anzahl+' Beh. · '+dauerTxt+
+          (f.kosten?' · '+f.kosten.toFixed(0)+' CHF':'')+
+        '</div>'+
+      '</div>'+
+      '<div class="arr">›</div>'+
+    '</div>';
+  }).join('');
+}
+function setBehFilter(f){ behFilter = f; renderBeh(); }
+
+/* Fall-Detail anzeigen: alle Behandlungen des Falls, mit Abschluss/Nachbeh. */
+function showFallDetail(fallId){
+  const fallBehs = (data.behandlungen||[])
+    .map((b,i)=>({b,i}))
+    .filter(x => (x.b.fallId||('SOLO_'+x.i)) === fallId)
+    .sort((a,c)=>(a.b.datum||'').localeCompare(c.b.datum||''));
+  if(!fallBehs.length){ toast('Fall nicht gefunden'); return; }
+  const f = fallBehs[0].b;
+  const abgeschlossen = fallBehs.some(x => x.b.fallAbgeschlossen);
+  const abschlussDatum = fallBehs.map(x => x.b.fallAbschlussDatum).filter(Boolean).sort().pop() || '';
+  const katC = behKatColor(f.kategorie);
+  const istSolo = !f.fallId;
+
+  const behHtml = fallBehs.map((x,n) => {
+    const b = x.b;
+    const nachbeh = n > 0;
+    return '<div style="border-left:3px solid var(--'+katC+');padding:8px 10px;margin-bottom:6px;background:var(--gray);border-radius:4px">'+
+      '<div style="font-size:13px;font-weight:600">'+deCH(b.datum)+(nachbeh?' · ↻ Nachbeh.':'')+'</div>'+
+      (b.behandlung?'<div style="font-size:12px;margin-top:2px">💊 '+esc(b.behandlung)+'</div>':'')+
+      (b.tierarzt?'<div style="font-size:12px;color:var(--text2)">👨‍⚕️ '+esc(b.tierarzt)+'</div>':'')+
+      (b.kosten?'<div style="font-size:12px;color:var(--text2)">'+b.kosten.toFixed(2)+' CHF</div>':'')+
+      (b.bemerkungen?'<div style="font-size:12px;color:var(--text2);margin-top:2px">'+esc(b.bemerkungen)+'</div>':'')+
+    '</div>';
+  }).join('');
+
+  const aktionBtns = abgeschlossen
+    ? '<button class="btn btn-outline btn-wide" onclick="wiedereroeffneFallMob(\''+esc(fallId)+'\')">🔓 Fall wieder öffnen</button>'
+    : (istSolo
+        ? '<button class="btn btn-primary btn-wide" onclick="closeModal();setTimeout(()=>showBehForm({vorTvd:\''+esc(f.tvd)+'\',nachbehFallId:\''+esc(fallId)+'\'}),80)">↻ Nachbehandlung hinzufügen</button>'
+        : '<div class="btn-row">'+
+            '<button class="btn btn-outline" onclick="closeModal();setTimeout(()=>showBehForm({vorTvd:\''+esc(f.tvd)+'\',nachbehFallId:\''+esc(fallId)+'\'}),80)">↻ Nachbeh.</button>'+
+            '<button class="btn btn-primary" onclick="abschlussFallMob(\''+esc(fallId)+'\')">✅ Abschliessen</button>'+
+          '</div>');
+
+  const totalKosten = fallBehs.reduce((s,x)=>s+(x.b.kosten||0), 0);
+  const dauerTage = fallBehs.length
+    ? Math.max(0, Math.floor((new Date(abschlussDatum||fallBehs[fallBehs.length-1].b.datum) - new Date(fallBehs[0].b.datum))/86400000))
+    : 0;
+
+  openModal(
+    '<h2><span class="badge b-'+katC+'">'+esc(f.kategorie||'-')+'</span> '+esc(f.name||'(ohne Name)')+'</h2>'+
+    '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">TVD '+esc(f.tvd||'-')+' · Fall seit '+deCH(fallBehs[0].b.datum)+(abschlussDatum?' · abgeschlossen '+deCH(abschlussDatum):'')+'</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">'+
+      '<div class="card" style="padding:8px;text-align:center"><div style="font-size:18px;font-weight:700">'+fallBehs.length+'</div><div style="font-size:11px;color:var(--text2)">Behandl.</div></div>'+
+      '<div class="card" style="padding:8px;text-align:center"><div style="font-size:18px;font-weight:700">'+dauerTage+' T</div><div style="font-size:11px;color:var(--text2)">Dauer</div></div>'+
+      '<div class="card" style="padding:8px;text-align:center"><div style="font-size:18px;font-weight:700">'+totalKosten.toFixed(0)+'</div><div style="font-size:11px;color:var(--text2)">CHF</div></div>'+
+    '</div>'+
+    '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Behandlungen</h3>'+
+    behHtml+
+    '<div style="margin-top:12px">'+aktionBtns+'</div>'+
+    '<button class="btn btn-outline btn-wide" style="margin-top:8px" onclick="closeModal()">Schliessen</button>'
+  );
+}
+
+/* Neue Behandlung (oder Nachbehandlung) erfassen */
+function showBehForm(opts){
+  opts = opts || {};
+  const heute = new Date().toISOString().slice(0,10);
+  const tiere = aktiveTiere();
+  const preTvd = opts.vorTvd || '';
+  const nachbehFallId = opts.nachbehFallId || '';
+  const tierOpts = '<option value="">— Tier wählen —</option>' +
+    tiere.sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+      .map(t => '<option value="'+esc(t.tvd)+'"'+(t.tvd===preTvd?' selected':'')+'>'+esc(t.name||t.tvd)+' ('+esc(t.tvd)+')</option>').join('');
+  const katOpts = '<option value="">— Kategorie —</option>' +
+    BEH_KATEGORIEN.map(k => '<option value="'+k+'">'+k+'</option>').join('');
+
+  // Wenn Nachbehandlung: Kategorie vorbelegen
+  let preKat = '';
+  if(nachbehFallId){
+    const first = (data.behandlungen||[]).find(b => b.fallId===nachbehFallId);
+    if(first) preKat = first.kategorie;
+  }
+
+  openModal(
+    '<h2>💊 '+(nachbehFallId?'Nachbehandlung':'Behandlung erfassen')+'</h2>'+
+    (nachbehFallId?'<div style="background:var(--orange-l);padding:10px;border-radius:8px;margin-bottom:12px;font-size:13px;color:var(--text2)">↻ Nachbehandlung zu bestehendem Fall</div>':'')+
+    '<div class="field"><label>Tier</label><select id="bhfTier"'+(nachbehFallId?' disabled':'')+'>'+tierOpts+'</select></div>'+
+    '<div class="field"><label>Datum</label><input type="date" id="bhfDatum" value="'+heute+'"></div>'+
+    '<div class="field"><label>Kategorie</label><select id="bhfKat"'+(nachbehFallId?' disabled':'')+'>'+katOpts.replace('value="'+preKat+'"','value="'+preKat+'" selected')+'</select></div>'+
+    '<div class="field"><label>Behandlung / Medikament</label><input type="text" id="bhfBeh" placeholder="z.B. Antibiotika, Klauenschnitt..."></div>'+
+    '<div class="field"><label>Tierarzt</label><input type="text" id="bhfArzt" placeholder="Name Tierarzt"></div>'+
+    '<div class="field"><label>Kosten (CHF)</label><input type="number" id="bhfKosten" step="0.05" inputmode="decimal" placeholder="0.00"></div>'+
+    '<div class="field"><label>Bemerkungen</label><textarea id="bhfBem" placeholder="Weitere Hinweise..."></textarea></div>'+
+    '<input type="hidden" id="bhfNachbehFallId" value="'+esc(nachbehFallId)+'">'+
+    '<div class="btn-row">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+      '<button class="btn btn-primary" onclick="saveBehMob()">Speichern</button>'+
+    '</div>'
+  );
+}
+
+async function saveBehMob(){
+  const nachbehFallId = $('#bhfNachbehFallId').value || '';
+  let tvd, kategorie;
+  if(nachbehFallId){
+    const first = (data.behandlungen||[]).find(b => b.fallId===nachbehFallId);
+    if(!first){ alert('Fall nicht gefunden'); return; }
+    tvd = first.tvd;
+    kategorie = first.kategorie;
+  } else {
+    tvd = $('#bhfTier').value;
+    kategorie = $('#bhfKat').value;
+  }
+  const datum = $('#bhfDatum').value;
+  if(!tvd){ alert('Tier wählen!'); return; }
+  if(!datum){ alert('Datum eingeben!'); return; }
+  if(!kategorie){ alert('Kategorie wählen!'); return; }
+
+  const tier = findTier(tvd);
+
+  // Wenn Nachbehandlung zu abgeschlossenem Fall: erst wiedereröffnen
+  if(nachbehFallId){
+    const fallBehs = (data.behandlungen||[]).filter(b => b.fallId===nachbehFallId);
+    if(fallBehs.some(b => b.fallAbgeschlossen)){
+      if(!confirm('Der Fall war abgeschlossen. Wieder öffnen?')) return;
+      fallBehs.forEach(b => { b.fallAbgeschlossen = false; b.fallAbschlussDatum = ''; });
+    }
+  }
+
+  const fallId = nachbehFallId || ('BF_'+Date.now());
+  const b = {
+    tvd, name: tier ? tier.name : '', datum, kategorie,
+    behandlung: ($('#bhfBeh').value||'').trim(),
+    tierarzt:   ($('#bhfArzt').value||'').trim(),
+    kosten:     parseFloat($('#bhfKosten').value)||0,
+    bemerkungen:($('#bhfBem').value||'').trim(),
+    fallId, fallAbgeschlossen:false, fallAbschlussDatum:''
+  };
+  if(!data.behandlungen) data.behandlungen = [];
+  data.behandlungen.push(b);
+  saveLocal();
+  closeModal();
+  toast(nachbehFallId ? 'Nachbehandlung gespeichert' : 'Behandlung erfasst');
+  if(currentScreen==='beh') renderBeh();
+  try { await cloudPushKey('behandlungen'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+async function abschlussFallMob(fallId){
+  if(!fallId) return;
+  const fallBehs = (data.behandlungen||[]).filter(b => b.fallId===fallId);
+  if(!fallBehs.length){ toast('Fall nicht gefunden'); return; }
+  const heute = new Date().toISOString().slice(0,10);
+  const datum = prompt('Abschluss-Datum (YYYY-MM-DD):', heute);
+  if(!datum) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(datum)){ alert('Ungültiges Datum'); return; }
+  fallBehs.forEach(b => { b.fallAbgeschlossen = true; b.fallAbschlussDatum = datum; });
+  saveLocal();
+  closeModal();
+  toast('Fall abgeschlossen');
+  if(currentScreen==='beh') renderBeh();
+  try { await cloudPushKey('behandlungen'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+async function wiedereroeffneFallMob(fallId){
+  if(!fallId) return;
+  if(!confirm('Fall wieder öffnen? Du kannst dann weitere Nachbehandlungen erfassen.')) return;
+  const fallBehs = (data.behandlungen||[]).filter(b => b.fallId===fallId);
+  fallBehs.forEach(b => { b.fallAbgeschlossen = false; b.fallAbschlussDatum = ''; });
+  saveLocal();
+  closeModal();
+  toast('Fall wieder geöffnet');
+  if(currentScreen==='beh') renderBeh();
+  try { await cloudPushKey('behandlungen'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+/* Für Tier-Detail: kleine Behandlungs-Sektion */
+function tierBehInfo(tvd){
+  if(!tvd) return '';
+  const n = normTvd(tvd);
+  const mineBehs = (data.behandlungen||[]).filter(b => normTvd(b.tvd)===n);
+  if(!mineBehs.length){
+    return '<h2 style="margin-top:20px;font-size:16px">💊 Behandlungen</h2>'+
+      '<div style="color:var(--text2);font-size:13px">Keine erfassten Behandlungen.</div>';
+  }
+  // Fälle gruppieren nur für dieses Tier
+  const faelle = {};
+  mineBehs.forEach((b,i) => {
+    const fid = b.fallId || ('SOLO_'+i);
+    if(!faelle[fid]) faelle[fid] = { fallId:fid, kategorie:b.kategorie, beginn:b.datum, letzte:b.datum, anzahl:0, abgeschlossen:!!b.fallAbgeschlossen, abschluss:'' };
+    const f = faelle[fid];
+    f.anzahl++;
+    if((b.datum||'')<(f.beginn||'')) f.beginn = b.datum;
+    if((b.datum||'')>(f.letzte||'')) f.letzte = b.datum;
+    if(b.fallAbgeschlossen){ f.abgeschlossen = true; if(b.fallAbschlussDatum && b.fallAbschlussDatum>f.abschluss) f.abschluss = b.fallAbschlussDatum; }
+  });
+  const faelleArr = Object.values(faelle).sort((a,b)=>(b.beginn||'').localeCompare(a.beginn||''));
+  const offen = faelleArr.filter(f => !f.abgeschlossen);
+  const abg = faelleArr.filter(f => f.abgeschlossen);
+
+  let html = '<h2 style="margin-top:20px;font-size:16px">💊 Behandlungen</h2>';
+  if(offen.length){
+    html += '<div style="font-size:12px;color:var(--text2);margin:8px 0 4px">Offene Fälle ('+offen.length+')</div>';
+    offen.forEach(f => {
+      const katC = behKatColor(f.kategorie);
+      html += '<div style="background:var(--orange-l);padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;border-left:3px solid var(--orange)" onclick="closeModal();setTimeout(()=>showFallDetail(\''+esc(f.fallId)+'\'),80)">'+
+        '<div style="font-weight:600"><span class="badge b-'+katC+'">'+esc(f.kategorie||'-')+'</span> seit '+deCH(f.beginn)+'</div>'+
+        '<div style="font-size:12px;color:var(--text2)">'+f.anzahl+' Behandlung'+(f.anzahl>1?'en':'')+' · letzte: '+deCH(f.letzte)+'</div>'+
+      '</div>';
+    });
+  }
+  if(abg.length){
+    html += '<div style="font-size:12px;color:var(--text2);margin:8px 0 4px">Krankenhistorie ('+abg.length+' abgeschlossen)</div>';
+    abg.slice(0,10).forEach(f => {
+      const katC = behKatColor(f.kategorie);
+      const dauer = Math.max(0, Math.floor((new Date(f.abschluss||f.letzte)-new Date(f.beginn))/86400000));
+      html += '<div style="background:var(--green-l);padding:8px 12px;border-radius:8px;margin-bottom:6px;cursor:pointer;border-left:3px solid var(--green)" onclick="closeModal();setTimeout(()=>showFallDetail(\''+esc(f.fallId)+'\'),80)">'+
+        '<div style="font-weight:600"><span class="badge b-'+katC+'">'+esc(f.kategorie||'-')+'</span> '+deCH(f.beginn)+'–'+deCH(f.abschluss||f.letzte)+'</div>'+
+        '<div style="font-size:12px;color:var(--text2)">'+f.anzahl+' Behandlung'+(f.anzahl>1?'en':'')+' · '+dauer+' Tage</div>'+
+      '</div>';
+    });
+    if(abg.length>10) html += '<div style="font-size:11px;color:var(--text2)">... und '+(abg.length-10)+' weitere</div>';
+  }
+  html += '<button class="btn btn-blue btn-wide" style="margin-top:8px" onclick="closeModal();setTimeout(()=>showBehForm({vorTvd:\''+esc(tvd)+'\'}),80)">+ Behandlung erfassen</button>';
+  return html;
 }
 
 /* ===================================================================
