@@ -1980,12 +1980,53 @@ function registerSW(){
 /* ===================================================================
    INIT
 =================================================================== */
+// ----------------- GLOBALE ERROR-HANDLER -----------------
+// Wenn beim Init irgendwo ein Fehler kommt, wird er HIER sichtbar gemacht
+// statt die App stumm einfrieren zu lassen.
+function showFatalError(label, err){
+  const msg = (err && err.stack) ? (err.message + '\n\n' + err.stack) : String(err);
+  console.error('[FATAL]', label, err);
+  // Falls der Inhaltsbereich leer ist, eine sichtbare Box einsetzen
+  const content = document.querySelector('.content') || document.body;
+  if(!content) return;
+  let box = document.getElementById('fatalErrorBox');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'fatalErrorBox';
+    box.style.cssText = 'position:fixed;top:60px;left:8px;right:8px;background:#fee;border:2px solid #c00;border-radius:8px;padding:12px;z-index:99999;max-height:70vh;overflow:auto;font-size:13px;color:#600;';
+    document.body.appendChild(box);
+  }
+  box.innerHTML = '<strong style="font-size:14px;">⚠️ App-Fehler ('+label+')</strong>'
+    + '<pre style="white-space:pre-wrap;font-size:11px;margin:8px 0;background:#fff;padding:6px;border-radius:4px;">'+msg.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</pre>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'
+    + '<button onclick="location.reload()" style="padding:8px 12px;background:#3498db;color:white;border:none;border-radius:4px;">🔄 Neu laden</button>'
+    + '<button onclick="if(typeof forceUpdate===\'function\')forceUpdate();else{caches.keys().then(k=>k.forEach(c=>caches.delete(c))).then(()=>location.reload())}" style="padding:8px 12px;background:#e67e22;color:white;border:none;border-radius:4px;">🧹 Cache löschen + neu laden</button>'
+    + '<button onclick="document.getElementById(\'fatalErrorBox\').remove()" style="padding:8px 12px;background:#999;color:white;border:none;border-radius:4px;">✕ Schliessen</button>'
+    + '</div>';
+}
+window.addEventListener('error', function(e){ showFatalError('Script', e.error || e.message || e); });
+window.addEventListener('unhandledrejection', function(e){ showFatalError('Promise', e.reason || e); });
+
+// ----------------- ROBUSTER INIT -----------------
 document.addEventListener('DOMContentLoaded', function(){
-  loadLocal();
-  switchScreen(currentScreen || 'tiere');
-  try { renderMehr(); } catch(_){}
-  if(getPin()){ try { syncNow(); } catch(_){} }
-  registerSW();
+  // Jeder Schritt einzeln gewrappt — wenn einer crasht, läuft der Rest weiter
+  try { loadLocal(); } catch(e){ showFatalError('loadLocal', e); }
+  try { switchScreen(currentScreen || 'tiere'); }
+  catch(e){
+    showFatalError('switchScreen', e);
+    // Fallback: zumindest den Tiere-Screen anzeigen
+    try {
+      const sc = document.getElementById('sc-tiere');
+      if(sc) sc.classList.add('active');
+      const tt = document.getElementById('screenTitle');
+      if(tt) tt.textContent = 'Tiere';
+    } catch(_){}
+  }
+  try { renderMehr(); } catch(e){ console.warn('renderMehr:', e); }
+  if(getPin()){
+    setTimeout(()=>{ syncNow().catch(e => console.warn('initial syncNow:', e)); }, 500);
+  }
+  try { registerSW(); } catch(e){ console.warn('registerSW:', e); }
 });
 </script>
 
