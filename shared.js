@@ -24,7 +24,10 @@
   // Was wird synchronisiert (mit Cloud)
   const SYNC_ALLOWED_KEYS = [
     'tiere','besamungen','behandlungen','schlachtungen',
-    'felder','journal','wiesenSettings','wiesenEntries'
+    'felder','journal','wiesenSettings','wiesenEntries',
+    // Imkerei
+    'imkerSettings','imkerStaende','imkerVoelker','imkerArbeiten',
+    'imkerErnte','imkerBehandlungen','imkerBeobachtungen'
   ];
   // Was NIEMALS in die Cloud geht (bleibt lokal auf PC)
   const SYNC_FORBIDDEN_KEYS = ['maschinen','wartungen','services','rechnungen'];
@@ -158,13 +161,10 @@
     // Cloud
     interpretFetchError,
     // Versions-Stempel (beim Laden sichtbar)
-    VERSION: '1.0'
+    VERSION: '1.1'
   };
 
   global.BS = BS;
 
   // Convenience: Im Browser-Kontext zur Console loggen
-  if(typeof window !== 'undefined' && window.console){
-    console.log('Betriebsapp Shared Module v' + BS.VERSION + ' geladen.');
-  }
-})(typeof self !== 'undefined' ? self : this);
+  if(typeof window !== 'undefined' && wi
