@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Betriebsapp Diagnose</title>
+<style>
+  body { font-family: system-ui, -apple-system, Arial, sans-serif; padding: 14px; background:#f7f7f7; color:#222; line-height:1.4; }
+  h1 { margin: 0 0 6px; font-size: 18px; color:#2a6; }
+  h2 { margin: 18px 0 6px; font-size: 14px; color:#555; }
+  .card { background:#fff; border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin:8px 0; font-size:13px; }
+  .ok    { border-left: 5px solid #2a6; }
+  .warn  { border-left: 5px solid #e80; }
+  .err   { border-left: 5px solid #c33; }
+  .label { color:#888; font-size:11px; }
+  pre   { background:#f0f0f0; padding:6px; border-radius:4px; overflow-x:auto; font-size:11px; white-space:pre-wrap; word-break:break-all; }
+  button { padding: 10px 14px; margin: 4px 4px 4px 0; border:none; border-radius:5px; background:#3498db; color:#fff; font-size:14px; cursor:pointer; }
+  button.danger { background:#c33; }
+  button.warn { background:#e80; }
+  .small { font-size: 11px; color: #666; }
+</style>
+</head>
+<body>
+
+<h1>🔍 Betriebsapp Diagnose</h1>
+<div class="small">Diese Seite umgeht den Service Worker und zeigt direkt den Live-Stand. Erstellt: <span id="now"></span></div>
+
+<div id="report"></div>
+
+<h2>Aktionen</h2>
+<button onclick="killAll()" class="danger">🧹 Alles löschen + neu starten</button>
+<button onclick="testFetch('./index.html')">🔁 index.html neu laden</button>
+<button onclick="testFetch('./imkerei-mobile.js')">🔁 imkerei-mobile.js holen</button>
+<button onclick="testFetch('./sw.js')">🔁 sw.js holen</button>
+<button onclick="window.location.href='./index.html?_=' + Date.now()">▶️ App starten (Cache umgehen)</button>
+
+<h2>Ausgabe</h2>
+<pre id="output">Bereit.</pre>
+
+<script>
+const OUT = document.getElementById('output');
+const REP = document.getElementById('report');
+function log(s){ OUT.textContent += '\n' + s; OUT.scrollTop = OUT.scrollHeight; }
+function add(cls, label, val, raw){
+  const d = document.createElement('div');
+  d.className = 'card ' + cls;
+  d.innerHTML = '<div class="label">'+label+'</div><div>'+val+'</div>' + (raw ? '<pre>'+raw+'</pre>' : '');
+  REP.appendChild(d);
+}
+
+document.getElementById('now').textContent = new Date().toLocaleString('de-CH');
+
+(async function diag(){
+  // 1. Browser
+  add('ok', 'Browser', navigator.userAgent);
+
+  // 2. Online?
+  add(navigator.onLine ? 'ok' : 'err', 'Online', navigator.onLine ? 'ja' : 'NEIN');
+
+  // 3. URL
+  add('ok', 'Aktuelle URL', location.href);
+
+  // 4. Service Worker
+  if('serviceWorker' in navigator){
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      if(regs.length){
+        for(const r of regs){
+          add('warn', 'Service Worker registriert',
+            'Scope: '+r.scope+'<br>Active: '+(r.active?r.active.scriptURL:'-')+
+            '<br>Waiting: '+(r.waiting?r.waiting.scriptURL:'-')+
+            '<br>Installing: '+(r.installing?r.installing.scriptURL:'-'));
+        }
+      } else {
+        add('ok', 'Service Worker', 'keine Registrierung');
+      }
+    } catch(e){ add('err', 'Service Worker', 'Fehler: '+e.message); }
+  } else {
+    add('warn', 'Service Worker', 'nicht unterstützt');
+  }
+
+  // 5. Caches
+  if('caches' in window){
+    try {
+      const ks = await caches.keys();
+      add(ks.length ? 'warn' : 'ok', 'Browser-Caches', ks.length+' Stück: ' + (ks.join(', ') || '(leer)'));
+    } catch(e){ add('err', 'Caches', e.message); }
+  }
+
+  // 6. localStorage
+  try {
+    const keys = Object.keys(localStorage);
+    const interesting = keys.filter(k => k.startsWith('betriebsapp'));
+    add('ok', 'localStorage Keys (betriebsapp_*)', interesting.length+' Stück: ' + (interesting.join(', ') || '(leer)'));
+  } catch(e){ add('err', 'localStorage', e.message); }
+
+  // 7. Live sw.js holen (cache-buster)
+  await checkFile('sw.js', /VERSION\s*=\s*['"]([^'"]+)/);
+  // 8. Live imkerei-mobile.js holen
+  await checkFile('imkerei-mobile.js', /VERSION\s*:\s*['"]([^'"]+)/);
+  // 9. Live shared.js holen
+  await checkFile('shared.js', /VERSION\s*:\s*['"]([^'"]+)/);
+  // 10. Live index.html holen
+  await checkIndex();
+})();
+
+async function checkFile(name, versionRegex){
+  try {
+    const r = await fetch('./'+name+'?_=' + Date.now(), {cache:'no-store'});
+    if(!r.ok){
+      add('err', name, 'HTTP '+r.status+' – Datei NICHT auf Server!');
+      return;
+    }
+    const txt = await r.text();
+    const m = versionRegex ? txt.match(versionRegex) : null;
+    add('ok', name+' geladen', 'Size: '+txt.length+' bytes' + (m ? ', VERSION: '+m[1] : ''));
+  } catch(e){ add('err', name, 'Fehler: '+e.message); }
+}
+async function checkIndex(){
+  try {
+    const r = await fetch('./index.html?_=' + Date.now(), {cache:'no-store'});
+    if(!r.ok){ add('err', 'index.html', 'HTTP '+r.status); return; }
+    const txt = await r.text();
+    const hasReadyState = /document\.readyState\s*===\s*['"]loading['"]/.test(txt);
+    const hasImkerTab = /data-screen=['"]imker['"]/.test(txt);
+    const hasInitApp = /function initApp\(\)/.test(txt);
+    const hasErrorHandler = /showFatalError/.test(txt);
+    add(hasInitApp && hasReadyState ? 'ok' : 'err',
+      'index.html geladen ('+txt.length+' bytes)',
+      'initApp(): ' + (hasInitApp?'✓':'✗') +
+      '<br>readyState-Check: ' + (hasReadyState?'✓':'✗') +
+      '<br>Imker-Tab: ' + (hasImkerTab?'✓':'✗') +
+      '<br>Error-Handler: ' + (hasErrorHandler?'✓':'✗'));
+  } catch(e){ add('err', 'index.html', e.message); }
+}
+
+async function killAll(){
+  if(!confirm('Alle App-Daten dieser Seite löschen (Service Worker, Caches, localStorage, sessionStorage)?')) return;
+  log('Deregistriere Service Worker...');
+  try {
+    if('serviceWorker' in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for(const r of regs){ await r.unregister(); log('  - unregistered: '+r.scope); }
+    }
+  } catch(e){ log('SW-Fehler: '+e.message); }
+  log('Lösche Caches...');
+  try {
+    if('caches' in window){
+      const ks = await caches.keys();
+      for(const k of ks){ await caches.delete(k); log('  - cache gelöscht: '+k); }
+    }
+  } catch(e){ log('Cache-Fehler: '+e.message); }
+  log('Lösche localStorage (nur betriebsapp_*)...');
+  try {
+    Object.keys(localStorage).filter(k=>k.startsWith('betriebsapp')).forEach(k=>{
+      localStorage.removeItem(k); log('  - removed: '+k);
+    });
+  } catch(e){ log('localStorage-Fehler: '+e.message); }
+  log('\nFERTIG. Lade jetzt index.html mit cache-buster...');
+  setTimeout(()=>{ window.location.href = './index.html?_=' + Date.now(); }, 1500);
+}
+async function testFetch(url){
+  try {
+    log('Hole: '+url+'?_='+Date.now());
+    const r = await fetch(url+'?_='+Date.now(), {cache:'no-store'});
+    log('  Status: '+r.status+' '+r.statusText);
+    log('  Size: '+(await r.text()).length+' bytes');
+  } catch(e){ log('  ERROR: '+e.message); }
+}
+</script>
+
+</body>
+</html>
