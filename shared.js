@@ -161,10 +161,13 @@
     // Cloud
     interpretFetchError,
     // Versions-Stempel (beim Laden sichtbar)
-    VERSION: '1.1'
+    VERSION: '1.2'
   };
 
   global.BS = BS;
 
   // Convenience: Im Browser-Kontext zur Console loggen
-  if(typeof window !== 'undefined' && wi
+  if(typeof window !== 'undefined' && window.console){
+    console.log('Betriebsapp Shared Module v' + BS.VERSION + ' geladen.');
+  }
+})(typeof self !== 'undefined' ? self : this);
