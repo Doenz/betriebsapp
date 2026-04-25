@@ -1,4 +1,4 @@
-var VERSION = '2026-04-23-1';
+var VERSION = '2026-04-25-imker';
 var CACHE_NAME = 'betriebsapp-mobile-' + VERSION;
 
 var APP_SHELL = [
@@ -6,6 +6,7 @@ var APP_SHELL = [
   './index.html',
   './manifest.json',
   './shared.js',
+  './imkerei-mobile.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];

@@ -380,7 +380,19 @@ function switchScreen(name){
   if(name==='beh') renderBeh();
   if(name==='schlacht') renderSchlacht();
   if(name==='mehr') renderMehr();
-  if(name==='imker' && window.IMKM) IMKM.render();
+  if(name==='imker'){
+    if(window.IMKM){
+      try { IMKM.render(); }
+      catch(e){
+        console.error('IMKM.render failed:', e);
+        const root = document.getElementById('imkMobileRoot');
+        if(root) root.innerHTML = '<div class="card" style="background:#fee;color:#900;padding:16px;"><strong>Fehler beim Laden des Imker-Moduls</strong><br><span style="font-size:12px;">'+(e.message||e)+'</span><br><br><button class="btn btn-outline" onclick="forceUpdate()">🔄 App neu laden</button></div>';
+      }
+    } else {
+      const root = document.getElementById('imkMobileRoot');
+      if(root) root.innerHTML = '<div class="card" style="background:#fffbe0;color:#660;padding:16px;"><strong>Imker-Modul fehlt</strong><br><span style="font-size:13px;">Die Datei <code>imkerei-mobile.js</code> wurde nicht geladen. App neu laden um das Update zu holen.</span><br><br><button class="btn btn-primary" onclick="forceUpdate()">🔄 App neu laden</button></div>';
+    }
+  }
 }
 
 function fabAction(){
@@ -505,7 +517,7 @@ async function syncNow(){
     else if(currentScreen==='kalender') renderKalender();
     else if(currentScreen==='schlacht') renderSchlacht();
     else if(currentScreen==='mehr') renderMehr();
-    else if(currentScreen==='imker' && window.IMKM) IMKM.render();
+    else if(currentScreen==='imker' && window.IMKM){ try{ IMKM.render(); }catch(e){ console.error(e); } }
   } catch(e){
     const friendly = interpretFetchError(e);
     setStatus(false, friendly);
