@@ -1,4 +1,4 @@
-var VERSION = '2026-04-25-imker-3';
+var VERSION = '2026-04-25-imker-4-domready';
 var CACHE_NAME = 'betriebsapp-mobile-' + VERSION;
 
 var APP_SHELL = [

@@ -660,17 +660,8 @@ function setStatus(ok, msg){
     sInfo.style.color = ok ? 'var(--green,#27ae60)' : 'var(--red,#c00)';
   }
 }
-// Klick auf den Status-Punkt zeigt die letzte Meldung als Alert
-window.addEventListener('DOMContentLoaded', function(){
-  const dot = document.getElementById('statusDot');
-  if(dot){
-    dot.style.cursor = 'pointer';
-    dot.addEventListener('click', function(){
-      const msg = dot.dataset.lastMsg || 'Status: ' + (dot.classList.contains('ok')?'OK':'kein Sync versucht');
-      alert('Sync-Status:\n\n' + msg + '\n\nFalls Fehler bestehen: Mehr-Tab → Sync-Diagnose starten.');
-    });
-  }
-});
+// (Klick-Handler für #statusDot wird jetzt in initApp() unten gebunden,
+// damit er auch funktioniert wenn DOMContentLoaded bereits gefeuert hat.)
 
 /* ===================================================================
    KATEGORIE- UND STAMMDATEN-LOGIK
@@ -2008,7 +1999,12 @@ window.addEventListener('error', function(e){ showFatalError('Script', e.error |
 window.addEventListener('unhandledrejection', function(e){ showFatalError('Promise', e.reason || e); });
 
 // ----------------- ROBUSTER INIT -----------------
-document.addEventListener('DOMContentLoaded', function(){
+// WICHTIG: Wir registrieren NICHT nur einen DOMContentLoaded-Listener,
+// weil das Event möglicherweise schon gefeuert hat (besonders nach
+// Service-Worker-Reloads oder bei langen Scripts). Stattdessen prüfen
+// wir document.readyState und rufen Init direkt auf wenn das DOM
+// bereits bereit ist.
+function initApp(){
   // Jeder Schritt einzeln gewrappt — wenn einer crasht, läuft der Rest weiter
   try { loadLocal(); } catch(e){ showFatalError('loadLocal', e); }
   try { switchScreen(currentScreen || 'tiere'); }
@@ -2024,10 +2020,32 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   try { renderMehr(); } catch(e){ console.warn('renderMehr:', e); }
   if(getPin()){
-    setTimeout(()=>{ syncNow().catch(e => console.warn('initial syncNow:', e)); }, 500);
+    setTimeout(()=>{
+      try { syncNow().catch(e => console.warn('initial syncNow:', e)); }
+      catch(e){ console.warn('initial syncNow sync:', e); }
+    }, 500);
   }
   try { registerSW(); } catch(e){ console.warn('registerSW:', e); }
-});
+  // Status-Dot Click-Handler binden (vorher in separatem DOMContentLoaded)
+  try {
+    const dot = document.getElementById('statusDot');
+    if(dot && !dot.dataset.bound){
+      dot.dataset.bound = '1';
+      dot.style.cursor = 'pointer';
+      dot.addEventListener('click', function(){
+        const m = dot.dataset.lastMsg || 'Status: ' + (dot.classList.contains('ok')?'OK':'kein Sync versucht');
+        alert('Sync-Status:\n\n' + m + '\n\nFalls Fehler bestehen: Mehr-Tab → Sync-Diagnose starten.');
+      });
+    }
+  } catch(_){}
+}
+// DOM bereits bereit? Dann sofort ausführen, sonst auf das Event warten.
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  // DOM ist 'interactive' oder 'complete' — Listener würde NIE feuern
+  setTimeout(initApp, 0);
+}
 </script>
 
 <!-- Imkerei-Modul (Mobile) -->
