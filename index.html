@@ -423,12 +423,23 @@ function setPin(p){
   else localStorage.setItem('betriebsapp_sync_pin', p);
 }
 
-function setPinInteractive(){
+async function setPinInteractive(){
   const p = prompt('Sync-PIN eingeben:', getPin());
   if(p===null) return;
   setPin(p.trim());
-  toast('PIN gespeichert');
-  syncNow();
+  toast('PIN gespeichert – teste Sync...');
+  try {
+    await syncNow();
+    // syncNow zeigt schon einen Toast – zusätzlich Bestätigung
+    if($('#statusDot').classList.contains('ok')){
+      alert('✅ Sync OK! Verbindung steht.');
+    } else {
+      const last = $('#statusDot').dataset.lastMsg || 'unbekannt';
+      alert('❌ Sync fehlgeschlagen:\n\n' + last + '\n\nDrück oben links auf den roten Punkt um den Fehler nochmal zu sehen, oder Mehr-Tab → Sync-Diagnose.');
+    }
+  } catch(e){
+    alert('❌ Unerwarteter Fehler: ' + (e.message||e));
+  }
 }
 
 async function cloudFetch(path, options){
@@ -635,8 +646,31 @@ function renderDiagnose(steps){
 }
 
 function setStatus(ok, msg){
-  $('#statusDot').classList.toggle('ok', !!ok);
+  const dot = $('#statusDot');
+  dot.classList.toggle('ok', !!ok);
+  if(msg){
+    dot.title = msg;                 // Tooltip am Punkt
+    dot.dataset.lastMsg = msg;       // Für Klick-Handler
+  }
+  // Letzten Status auch auf dem Mehr-Tab anzeigen, wenn aktiv
+  const sInfo = $('#syncInfo');
+  if(sInfo){
+    const time = new Date().toLocaleTimeString('de-CH');
+    sInfo.innerHTML = (ok ? '✅' : '❌') + ' ' + time + ' – ' + (msg||(ok?'OK':'Fehler'));
+    sInfo.style.color = ok ? 'var(--green,#27ae60)' : 'var(--red,#c00)';
+  }
 }
+// Klick auf den Status-Punkt zeigt die letzte Meldung als Alert
+window.addEventListener('DOMContentLoaded', function(){
+  const dot = document.getElementById('statusDot');
+  if(dot){
+    dot.style.cursor = 'pointer';
+    dot.addEventListener('click', function(){
+      const msg = dot.dataset.lastMsg || 'Status: ' + (dot.classList.contains('ok')?'OK':'kein Sync versucht');
+      alert('Sync-Status:\n\n' + msg + '\n\nFalls Fehler bestehen: Mehr-Tab → Sync-Diagnose starten.');
+    });
+  }
+});
 
 /* ===================================================================
    KATEGORIE- UND STAMMDATEN-LOGIK
