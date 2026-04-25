@@ -226,6 +226,11 @@ body{
       <div id="wiesenList"></div>
     </div>
 
+    <!-- IMKEREI -->
+    <div class="screen" id="sc-imker">
+      <div id="imkMobileRoot"></div>
+    </div>
+
     <!-- KALENDER -->
     <div class="screen" id="sc-kalender">
       <div class="chips" id="kalChips"></div>
@@ -269,7 +274,7 @@ body{
       <div class="card">
         <h2 style="margin:0 0 8px">ℹ️ Info</h2>
         <p style="color:var(--text2);font-size:13px;margin:0">
-          Diese App greift auf <strong>Tiere, Wiesen, Kalender, Behandlungen und Schlachtungen</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
+          Diese App greift auf <strong>Tiere, Wiesen, Imkerei, Kalender, Behandlungen und Schlachtungen</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
         </p>
         <p style="color:var(--text2);font-size:12px;margin:8px 0 0">
           Letzter Sync: <span id="lastSyncAt">nie</span>
@@ -283,9 +288,10 @@ body{
   <div class="tabs">
     <button class="tab active" data-screen="tiere" onclick="switchScreen('tiere')"><span class="ico">🐄</span>Tiere</button>
     <button class="tab" data-screen="wiesen" onclick="switchScreen('wiesen')"><span class="ico">🌾</span>Wiesen</button>
-    <button class="tab" data-screen="kalender" onclick="switchScreen('kalender')"><span class="ico">📅</span>Kalender</button>
+    <button class="tab" data-screen="imker" onclick="switchScreen('imker')"><span class="ico">🐝</span>Imker</button>
+    <button class="tab" data-screen="kalender" onclick="switchScreen('kalender')"><span class="ico">📅</span>Kal.</button>
     <button class="tab" data-screen="beh" onclick="switchScreen('beh')"><span class="ico">💊</span>Beh.</button>
-    <button class="tab" data-screen="schlacht" onclick="switchScreen('schlacht')"><span class="ico">🔪</span>Schlacht</button>
+    <button class="tab" data-screen="schlacht" onclick="switchScreen('schlacht')"><span class="ico">🔪</span>Schl.</button>
     <button class="tab" data-screen="mehr" onclick="switchScreen('mehr')"><span class="ico">⚙️</span>Mehr</button>
   </div>
 </div>
@@ -317,7 +323,10 @@ const SYNC_ALLOWED = BS.SYNC_ALLOWED_KEYS;
 =================================================================== */
 let data = {
   tiere:[], besamungen:[], behandlungen:[], schlachtungen:[],
-  felder:[], journal:[], wiesenSettings:null, wiesenEntries:{}
+  felder:[], journal:[], wiesenSettings:null, wiesenEntries:{},
+  // Imkerei
+  imkerSettings:null, imkerStaende:[], imkerVoelker:[], imkerArbeiten:[],
+  imkerErnte:[], imkerBehandlungen:[], imkerBeobachtungen:[]
 };
 let currentScreen = 'tiere';
 let tiereFilter = 'alle';
@@ -358,7 +367,7 @@ function switchScreen(name){
   const scEl = $('#sc-'+name);
   if(scEl) scEl.classList.add('active');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.screen===name));
-  const titles = {tiere:'Tiere', wiesen:'Wiesen', kalender:'Kalender', beh:'Behandlungen', schlacht:'Schlachtungen', mehr:'Mehr'};
+  const titles = {tiere:'Tiere', wiesen:'Wiesen', imker:'🐝 Imkerei', kalender:'Kalender', beh:'Behandlungen', schlacht:'Schlachtungen', mehr:'Mehr'};
   $('#screenTitle').textContent = titles[name] || 'Betriebsapp';
   // FAB nur wo sinnvoll
   const fab = $('#fab');
@@ -371,6 +380,7 @@ function switchScreen(name){
   if(name==='beh') renderBeh();
   if(name==='schlacht') renderSchlacht();
   if(name==='mehr') renderMehr();
+  if(name==='imker' && window.IMKM) IMKM.render();
 }
 
 function fabAction(){
@@ -495,6 +505,7 @@ async function syncNow(){
     else if(currentScreen==='kalender') renderKalender();
     else if(currentScreen==='schlacht') renderSchlacht();
     else if(currentScreen==='mehr') renderMehr();
+    else if(currentScreen==='imker' && window.IMKM) IMKM.render();
   } catch(e){
     const friendly = interpretFetchError(e);
     setStatus(false, friendly);
@@ -1931,5 +1942,9 @@ document.addEventListener('DOMContentLoaded', function(){
   registerSW();
 });
 </script>
+
+<!-- Imkerei-Modul (Mobile) -->
+<script src="imkerei-mobile.js"></script>
+
 </body>
 </html>
