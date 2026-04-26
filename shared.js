@@ -1,17 +1,26 @@
+/* AUTO-GENERATED — NICHT HÄNDISCH EDITIEREN!
+ * Quelle: shared/shared.js
+ * Sync:   node dev/sync-shared.js  (läuft auch automatisch vor jedem bump-version)
+ * Stand:  2026-04-26T00:00:00.000Z
+ */
 /**
- * Betriebsapp – Shared Module
+ * Betriebsapp – Shared Module  (MASTER)
  *
  * Gemeinsame Funktionen und Konstanten fuer Haupt-App (index.html)
  * und Mobile-App (mobile-app/index.html).
  *
  * Verwendung:
  *   <script src="shared/shared.js"></script>   (Haupt-App)
- *   <script src="shared.js"></script>          (Mobile-App, nach Sync)
+ *   <script src="shared.js"></script>          (Mobile-App, Auto-Sync)
  *
  * Namespace: window.BS
  *
- * WICHTIG: Die Master-Kopie liegt unter shared/shared.js.
- * Nach Aenderungen mit `node dev/sync-shared.js` nach mobile-app/ kopieren.
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * MASTER-DATEI — Änderungen NUR hier reinschreiben.
+ * mobile-app/shared.js wird automatisch beim nächsten `node dev/bump-version.js`
+ * synchronisiert. Manueller Sync: `node dev/sync-shared.js`.
+ * Drift-Check: `node dev/sync-shared.js --check` (gibt Fehler aus, wenn nicht synchron).
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 
 (function(global){
