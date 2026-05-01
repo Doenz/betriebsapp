@@ -1,7 +1,7 @@
 /* AUTO-GENERATED — NICHT HÄNDISCH EDITIEREN!
  * Quelle: shared/shared.js
  * Sync:   node dev/sync-shared.js  (läuft auch automatisch vor jedem bump-version)
- * Stand:  2026-04-26T00:00:00.000Z
+ * Stand:  2026-05-01T00:00:00.000Z
  */
 /**
  * Betriebsapp – Shared Module  (MASTER)
@@ -34,6 +34,8 @@
   const SYNC_ALLOWED_KEYS = [
     'tiere','besamungen','behandlungen','schlachtungen',
     'felder','journal','wiesenSettings','wiesenEntries',
+    // Stall + Notizen (auch auf Mobile verfuegbar)
+    'stallUnterhalt','notizen','allgemeineNotizen',
     // Imkerei
     'imkerSettings','imkerStaende','imkerVoelker','imkerArbeiten',
     'imkerErnte','imkerBehandlungen','imkerBeobachtungen'
@@ -170,7 +172,7 @@
     // Cloud
     interpretFetchError,
     // Versions-Stempel (beim Laden sichtbar)
-    VERSION: '1.2'
+    VERSION: '1.3'
   };
 
   global.BS = BS;

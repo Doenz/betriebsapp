@@ -257,8 +257,33 @@ body{
       <div id="schlachtList"></div>
     </div>
 
+    <!-- STALL UNTERHALT -->
+    <div class="screen" id="sc-stall">
+      <div class="card">
+        <h2 style="margin:0 0 4px">🛠️ Stall-Unterhalt</h2>
+        <p style="color:var(--text2);font-size:12px;margin:0 0 10px">Aufgaben rund um den Stall – was im Sommer / nach der Alp zu tun ist.</p>
+        <button class="btn btn-primary btn-wide" onclick="showStallForm()">+ Aufgabe erfassen</button>
+      </div>
+      <div id="stallList"></div>
+    </div>
+
+    <!-- ALLGEMEINE NOTIZEN -->
+    <div class="screen" id="sc-notiz">
+      <div class="card">
+        <h2 style="margin:0 0 4px">📝 Notizen</h2>
+        <p style="color:var(--text2);font-size:12px;margin:0 0 10px">Schnelle Notizen damit nichts vergessen geht. Synchron mit dem PC.</p>
+        <button class="btn btn-primary btn-wide" onclick="showNotizForm()">+ Notiz erfassen</button>
+      </div>
+      <div id="notizList"></div>
+    </div>
+
     <!-- MEHR / EINSTELLUNGEN -->
     <div class="screen" id="sc-mehr">
+      <div class="card">
+        <h2 style="margin:0 0 8px">🛠️ Stall & Notizen</h2>
+        <button class="btn btn-outline btn-wide" onclick="switchScreen('stall')" style="margin-bottom:8px">🛠️ Stall-Unterhalt</button>
+        <button class="btn btn-outline btn-wide" onclick="switchScreen('notiz')">📝 Notizen</button>
+      </div>
       <div class="card">
         <h2 style="margin:0 0 4px">☁️ Cloud-Sync</h2>
         <div id="syncInfo" style="color:var(--text2);font-size:13px;margin-bottom:12px"></div>
@@ -274,7 +299,7 @@ body{
       <div class="card">
         <h2 style="margin:0 0 8px">ℹ️ Info</h2>
         <p style="color:var(--text2);font-size:13px;margin:0">
-          Diese App greift auf <strong>Tiere, Wiesen, Imkerei, Kalender, Behandlungen und Schlachtungen</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
+          Diese App greift auf <strong>Tiere, Wiesen, Imkerei, Kalender, Behandlungen, Schlachtungen, Stall-Unterhalt und Notizen</strong> zu. Maschinen, Wartungen und Rechnungen sind hier nicht verfügbar – die bleiben auf dem PC.
         </p>
         <p style="color:var(--text2);font-size:12px;margin:8px 0 0">
           Letzter Sync: <span id="lastSyncAt">nie</span>
@@ -324,6 +349,8 @@ const SYNC_ALLOWED = BS.SYNC_ALLOWED_KEYS;
 let data = {
   tiere:[], besamungen:[], behandlungen:[], schlachtungen:[],
   felder:[], journal:[], wiesenSettings:null, wiesenEntries:{},
+  // Stall-Unterhalt + Allgemeine Notizen (cloud-synchronisiert)
+  stallUnterhalt:[], allgemeineNotizen:[],
   // Imkerei
   imkerSettings:null, imkerStaende:[], imkerVoelker:[], imkerArbeiten:[],
   imkerErnte:[], imkerBehandlungen:[], imkerBeobachtungen:[]
@@ -367,11 +394,11 @@ function switchScreen(name){
   const scEl = $('#sc-'+name);
   if(scEl) scEl.classList.add('active');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.screen===name));
-  const titles = {tiere:'Tiere', wiesen:'Wiesen', imker:'🐝 Imkerei', kalender:'Kalender', beh:'Behandlungen', schlacht:'Schlachtungen', mehr:'Mehr'};
+  const titles = {tiere:'Tiere', wiesen:'Wiesen', imker:'🐝 Imkerei', kalender:'Kalender', beh:'Behandlungen', schlacht:'Schlachtungen', stall:'🛠️ Stall-Unterhalt', notiz:'📝 Notizen', mehr:'Mehr'};
   $('#screenTitle').textContent = titles[name] || 'Betriebsapp';
   // FAB nur wo sinnvoll
   const fab = $('#fab');
-  if(name==='tiere' || name==='wiesen' || name==='beh') fab.style.display='flex';
+  if(name==='tiere' || name==='wiesen' || name==='beh' || name==='stall' || name==='notiz') fab.style.display='flex';
   else fab.style.display='none';
   // Render
   if(name==='tiere') renderTiere();
@@ -379,6 +406,8 @@ function switchScreen(name){
   if(name==='kalender') renderKalender();
   if(name==='beh') renderBeh();
   if(name==='schlacht') renderSchlacht();
+  if(name==='stall') renderStall();
+  if(name==='notiz') renderAllgNotiz();
   if(name==='mehr') renderMehr();
   if(name==='imker'){
     if(window.IMKM){
@@ -399,6 +428,8 @@ function fabAction(){
   if(currentScreen==='tiere') showBesamungForm();
   else if(currentScreen==='wiesen') showJournalForm();
   else if(currentScreen==='beh') showBehForm();
+  else if(currentScreen==='stall') showStallForm();
+  else if(currentScreen==='notiz') showNotizForm();
 }
 
 /* ===================================================================
@@ -1201,6 +1232,16 @@ function showBehForm(opts){
     '<div class="field"><label>Tierarzt</label><input type="text" id="bhfArzt" placeholder="Name Tierarzt"></div>'+
     '<div class="field"><label>Kosten (CHF)</label><input type="number" id="bhfKosten" step="0.05" inputmode="decimal" placeholder="0.00"></div>'+
     '<div class="field"><label>Bemerkungen</label><textarea id="bhfBem" placeholder="Weitere Hinweise..."></textarea></div>'+
+    '<div class="field" style="background:#FFF8E1;border-left:4px solid var(--orange);padding:8px 10px;border-radius:6px;">'+
+      '<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:6px;">'+
+        '<input type="checkbox" id="bhfVerbandAn" style="width:20px;height:20px;cursor:pointer;">'+
+        '<span>🩹 Klauenverband angelegt</span>'+
+      '</label>'+
+      '<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;">'+
+        '<input type="checkbox" id="bhfVerbandAb" style="width:20px;height:20px;cursor:pointer;">'+
+        '<span>✂️ Klauenverband entfernt</span>'+
+      '</label>'+
+    '</div>'+
     '<input type="hidden" id="bhfNachbehFallId" value="'+esc(nachbehFallId)+'">'+
     '<div class="btn-row">'+
       '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
@@ -1244,6 +1285,8 @@ async function saveBehMob(){
     tierarzt:   ($('#bhfArzt').value||'').trim(),
     kosten:     parseFloat($('#bhfKosten').value)||0,
     bemerkungen:($('#bhfBem').value||'').trim(),
+    verbandAn:  !!($('#bhfVerbandAn') && $('#bhfVerbandAn').checked),
+    verbandAb:  !!($('#bhfVerbandAb') && $('#bhfVerbandAb').checked),
     fallId, fallAbgeschlossen:false, fallAbschlussDatum:''
   };
   if(!data.behandlungen) data.behandlungen = [];
@@ -1936,6 +1979,189 @@ async function forceUpdate(){
     }
   } catch(e){ console.warn('forceUpdate cleanup:', e); }
   location.reload();
+}
+
+/* ===================================================================
+   STALL-UNTERHALT (Mobile)
+=================================================================== */
+function renderStall(){
+  if(!Array.isArray(data.stallUnterhalt)) data.stallUnterhalt = [];
+  const list = $('#stallList');
+  if(!list) return;
+  const todos = data.stallUnterhalt.slice().sort((a,b)=>{
+    if(a.erledigt!==b.erledigt) return a.erledigt?1:-1;
+    const pOrder={hoch:0,normal:1,niedrig:2};
+    return (pOrder[a.prio]||1)-(pOrder[b.prio]||1);
+  });
+  if(!todos.length){
+    list.innerHTML='<div class="card" style="text-align:center;color:var(--text2);padding:20px;">Noch keine Aufgaben. Tippe auf <strong>+</strong> um eine Aufgabe zu erfassen.</div>';
+    return;
+  }
+  list.innerHTML = todos.map(t=>{
+    const prioColor = t.prio==='hoch'?'var(--red)':t.prio==='niedrig'?'var(--text2)':'var(--green)';
+    const prioLabel = t.prio==='hoch'?'Hoch':t.prio==='niedrig'?'Niedrig':'Normal';
+    return '<div class="card" style="padding:10px 12px;'+(t.erledigt?'opacity:.55;':'')+'">'+
+      '<div style="display:flex;align-items:start;gap:10px;">'+
+        '<input type="checkbox" '+(t.erledigt?'checked':'')+' onchange="toggleStallMob(\''+esc(t.id)+'\')" style="margin-top:3px;width:20px;height:20px;cursor:pointer;flex-shrink:0;">'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-weight:600;font-size:14px;'+(t.erledigt?'text-decoration:line-through;color:var(--text2);':'')+'">'+esc(t.aufgabe||'')+'</div>'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:3px;">'+
+            '<span style="color:'+prioColor+';font-weight:600;">'+prioLabel+'</span>'+
+            (t.faellig?' · Bis: '+deCH(t.faellig):'')+
+            (t.notizen?'<br>'+esc(t.notizen):'')+
+          '</div>'+
+        '</div>'+
+        '<button class="btn btn-outline" style="padding:4px 8px;font-size:12px;flex-shrink:0;" onclick="delStallMob(\''+esc(t.id)+'\')">✕</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function showStallForm(){
+  openModal(
+    '<h2>🛠️ Stall-Aufgabe</h2>'+
+    '<div class="field"><label>Aufgabe *</label><input type="text" id="suMobAufgabe" placeholder="z.B. Boxen reinigen, Tor reparieren..."></div>'+
+    '<div class="field"><label>Priorität</label><select id="suMobPrio"><option value="hoch">Hoch</option><option value="normal" selected>Normal</option><option value="niedrig">Niedrig</option></select></div>'+
+    '<div class="field"><label>Fällig bis (optional)</label><input type="date" id="suMobFaellig"></div>'+
+    '<div class="field"><label>Notiz</label><textarea id="suMobNotiz" placeholder="Details, Material..."></textarea></div>'+
+    '<div class="btn-row">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+      '<button class="btn btn-primary" onclick="saveStallMob()">Speichern</button>'+
+    '</div>'
+  );
+}
+
+async function saveStallMob(){
+  const aufgabe = ($('#suMobAufgabe').value||'').trim();
+  if(!aufgabe){ alert('Aufgabe erforderlich!'); return; }
+  if(!Array.isArray(data.stallUnterhalt)) data.stallUnterhalt = [];
+  data.stallUnterhalt.push({
+    id:'su'+Date.now(),
+    aufgabe,
+    prio:$('#suMobPrio').value || 'normal',
+    faellig:$('#suMobFaellig').value || '',
+    notizen:($('#suMobNotiz').value||'').trim(),
+    erledigt:false,
+    erstellt:new Date().toISOString().slice(0,10)
+  });
+  saveLocal();
+  closeModal();
+  toast('Aufgabe gespeichert');
+  renderStall();
+  try { await cloudPushKey('stallUnterhalt'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+async function toggleStallMob(id){
+  if(!Array.isArray(data.stallUnterhalt)) return;
+  const t = data.stallUnterhalt.find(x=>x.id===id);
+  if(!t) return;
+  t.erledigt = !t.erledigt;
+  saveLocal();
+  renderStall();
+  try { await cloudPushKey('stallUnterhalt'); } catch(e){}
+}
+
+async function delStallMob(id){
+  if(!confirm('Aufgabe löschen?')) return;
+  if(!Array.isArray(data.stallUnterhalt)) return;
+  data.stallUnterhalt = data.stallUnterhalt.filter(x=>x.id!==id);
+  saveLocal();
+  renderStall();
+  toast('Aufgabe gelöscht');
+  try { await cloudPushKey('stallUnterhalt'); } catch(e){}
+}
+
+/* ===================================================================
+   ALLGEMEINE NOTIZEN (Mobile)
+=================================================================== */
+function renderAllgNotiz(){
+  if(!Array.isArray(data.allgemeineNotizen)) data.allgemeineNotizen = [];
+  const list = $('#notizList');
+  if(!list) return;
+  const notizen = data.allgemeineNotizen.slice().sort((a,b)=>{
+    if(a.erledigt!==b.erledigt) return a.erledigt?1:-1;
+    return (b.datum||'').localeCompare(a.datum||'');
+  });
+  if(!notizen.length){
+    list.innerHTML='<div class="card" style="text-align:center;color:var(--text2);padding:20px;">Keine Notizen. Tippe auf <strong>+</strong> um eine zu erfassen.</div>';
+    return;
+  }
+  list.innerHTML = notizen.map(n=>{
+    return '<div class="card" style="padding:10px 12px;'+(n.erledigt?'opacity:.55;':'')+'">'+
+      '<div style="display:flex;align-items:start;gap:10px;">'+
+        '<input type="checkbox" '+(n.erledigt?'checked':'')+' onchange="toggleAllgNotiz(\''+esc(n.id)+'\')" style="margin-top:3px;width:20px;height:20px;cursor:pointer;flex-shrink:0;">'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-size:11px;color:var(--text2);margin-bottom:3px;">'+deCH(n.datum)+(n.kategorie?' · '+esc(n.kategorie):'')+'</div>'+
+          '<div style="font-size:14px;'+(n.erledigt?'text-decoration:line-through;color:var(--text2);':'')+'white-space:pre-wrap;word-break:break-word;">'+esc(n.text||'')+'</div>'+
+        '</div>'+
+        '<button class="btn btn-outline" style="padding:4px 8px;font-size:12px;flex-shrink:0;" onclick="delAllgNotiz(\''+esc(n.id)+'\')">✕</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function showNotizForm(){
+  const heute = new Date().toISOString().slice(0,10);
+  openModal(
+    '<h2>📝 Notiz</h2>'+
+    '<div class="field"><label>Datum</label><input type="date" id="anfDatum" value="'+heute+'"></div>'+
+    '<div class="field"><label>Kategorie</label><select id="anfKat">'+
+      '<option value="">--</option>'+
+      '<option value="To-Do">To-Do</option>'+
+      '<option value="Idee">Idee</option>'+
+      '<option value="Beobachtung">Beobachtung</option>'+
+      '<option value="Einkauf">Einkauf</option>'+
+      '<option value="Stall">Stall</option>'+
+      '<option value="Wiese">Wiese</option>'+
+      '<option value="Sonstiges">Sonstiges</option>'+
+    '</select></div>'+
+    '<div class="field"><label>Notiz *</label><textarea id="anfText" rows="4" placeholder="Was nicht vergessen geht..."></textarea></div>'+
+    '<div class="btn-row">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Abbrechen</button>'+
+      '<button class="btn btn-primary" onclick="saveAllgNotiz()">Speichern</button>'+
+    '</div>'
+  );
+}
+
+async function saveAllgNotiz(){
+  const text = ($('#anfText').value||'').trim();
+  if(!text){ alert('Text erforderlich!'); return; }
+  if(!Array.isArray(data.allgemeineNotizen)) data.allgemeineNotizen = [];
+  data.allgemeineNotizen.push({
+    id:'an'+Date.now(),
+    datum: $('#anfDatum').value || new Date().toISOString().slice(0,10),
+    kategorie: $('#anfKat').value || '',
+    text,
+    erledigt:false,
+    erstellt: new Date().toISOString()
+  });
+  saveLocal();
+  closeModal();
+  toast('Notiz gespeichert');
+  renderAllgNotiz();
+  try { await cloudPushKey('allgemeineNotizen'); }
+  catch(e){ toast('Lokal gespeichert, Cloud-Fehler'); }
+}
+
+async function toggleAllgNotiz(id){
+  if(!Array.isArray(data.allgemeineNotizen)) return;
+  const n = data.allgemeineNotizen.find(x=>x.id===id);
+  if(!n) return;
+  n.erledigt = !n.erledigt;
+  saveLocal();
+  renderAllgNotiz();
+  try { await cloudPushKey('allgemeineNotizen'); } catch(e){}
+}
+
+async function delAllgNotiz(id){
+  if(!confirm('Notiz löschen?')) return;
+  if(!Array.isArray(data.allgemeineNotizen)) return;
+  data.allgemeineNotizen = data.allgemeineNotizen.filter(x=>x.id!==id);
+  saveLocal();
+  renderAllgNotiz();
+  toast('Notiz gelöscht');
+  try { await cloudPushKey('allgemeineNotizen'); } catch(e){}
 }
 
 /* ===================================================================
