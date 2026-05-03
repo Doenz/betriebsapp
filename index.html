@@ -721,6 +721,59 @@ function alpBadge(alp){
 /* ===================================================================
    RENDER: TIERE
 =================================================================== */
+/* ===================================================================
+   KLAUENVERBAND-ERKENNUNG (Mobile)
+   Pfad A (Vorrang): Checkbox-Flags verbandAn / verbandAb am Eintrag.
+     Wirkt OHNE 21-Tage-Limit; KV bleibt sichtbar bis explizit "entfernt".
+   Pfad B (Fallback): Textsuche bei alten Eintraegen ohne Flags,
+     21-Tage-Fenster, nur Klauen-Kategorien.
+=================================================================== */
+function hatKlauenverband(tvd){
+  if(!data.behandlungen) return null;
+  const n = normTvd(tvd);
+  const allesFuerTier = data.behandlungen.filter(b => normTvd(b.tvd)===n);
+  if(!allesFuerTier.length) return null;
+
+  // Pfad A: explizite Flags
+  const flagEintraege = allesFuerTier.filter(b => b.verbandAn===true || b.verbandAb===true);
+  if(flagEintraege.length){
+    flagEintraege.sort((a,b)=>(a.datum||'').localeCompare(b.datum||''));
+    const letzter = flagEintraege[flagEintraege.length-1];
+    if(letzter.verbandAn===true && letzter.verbandAb!==true) return letzter;
+    return null;
+  }
+
+  // Pfad B: alte Text-Eintraege
+  const heute = new Date();
+  const grenze = new Date(heute); grenze.setDate(heute.getDate()-21);
+  const grenzeStr = grenze.toISOString().split('T')[0];
+  const fuerTier = allesFuerTier.filter(b => b.datum>=grenzeStr);
+  if(!fuerTier.length) return null;
+
+  const angelegt = fuerTier.filter(b =>
+    (b.kategorie==='Klauenprobleme' || b.kategorie==='Panaritium')
+    && /verband|klotz|bandage/i.test((b.behandlung||'')+(b.bemerkungen||''))
+  );
+  if(!angelegt.length) return null;
+
+  for(const vb of angelegt){
+    const nachfolger = vb.fallId
+      ? data.behandlungen.filter(x => x.fallId===vb.fallId && x.datum>vb.datum)
+      : data.behandlungen.filter(x => normTvd(x.tvd)===n && x.datum>vb.datum);
+    const entfernt = nachfolger.some(x =>
+      /entfernt|abgenommen|ab\b|weg|ohne verband|ohne klotz|verband\s*(ab|weg|raus|entfernt)/i.test((x.behandlung||'')+(x.bemerkungen||''))
+    );
+    if(!entfernt) return vb;
+  }
+  return null;
+}
+
+function klauenverbandBadge(tvd){
+  const beh = hatKlauenverband(tvd);
+  if(!beh) return '';
+  return ' <span class="badge" style="background:var(--red);color:#fff;" title="Klauenverband seit '+deCH(beh.datum)+'">🩹 KV</span>';
+}
+
 function renderTiere(){
   // Filter chips
   const chipsHtml = [
@@ -798,7 +851,7 @@ function renderTiere(){
     } catch(err) { /* still robust when data is malformed */ }
     return '<div class="list-item" onclick="showTierDetail('+idx+')">'+
       '<div class="main">'+
-        '<div class="name">'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</div>'+
+        '<div class="name">'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+klauenverbandBadge(t.tvd)+'</div>'+
         '<div class="sub">'+esc(t.tvd||'')+' · '+katBadge+' · '+esc(t.gruppe||'-')+' · '+ageStr+'</div>'+
         kalbeLine+
         verbindung+
@@ -919,7 +972,7 @@ function showTierDetail(idx){
   }
 
   openModal(
-    '<h2>'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+'</h2>'+
+    '<h2>'+esc(t.name||'(ohne Name)')+' '+alpBadge(t.alp)+klauenverbandBadge(t.tvd)+'</h2>'+
     '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">'+
       'TVD: '+esc(t.tvd)+' · '+esc(kat)+' · '+(age!=null?age+' Tage':'—')+
     '</div>'+
