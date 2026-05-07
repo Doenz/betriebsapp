@@ -338,7 +338,7 @@ body{
 /* ===================================================================
    KONFIG — verwendet jetzt Werte aus dem Shared Module (BS.*)
 =================================================================== */
-const APP_VERSION = '2026-04-23-1';
+const APP_VERSION = '2026-05-07-1';
 const SUPABASE_URL = BS.SUPABASE_URL;
 const SUPABASE_KEY = BS.SUPABASE_KEY;
 const SYNC_ALLOWED = BS.SYNC_ALLOWED_KEYS;
@@ -711,6 +711,30 @@ function aktiveTiere(){
   return (data.tiere||[]).filter(t => !istGeschlachtet(t.tvd) && !t.abgang);
 }
 
+// Prueft, ob eine Besamung durch eine erfolgte Kalbung abgeschlossen ist.
+// Wenn ein lebendes Kalb der Mutter mit Geburtsdatum nahe am erwarteten
+// Kalbetermin existiert, gilt die Besamung als erledigt und wird in den
+// aktiven Anzeigen (Banner, Listen-Hinweis, Kalender) nicht mehr eingeblendet.
+function besamungAbgeschlossen(besamung, kuhTvd){
+  if(!besamung || !besamung.kalbetermin) return false;
+  const ktISO = toISO(besamung.kalbetermin);
+  if(!ktISO) return false;
+  const ktDate = new Date(ktISO);
+  if(isNaN(ktDate)) return false;
+  const mutterN = normTvd(kuhTvd || besamung.tvd);
+  if(!mutterN) return false;
+  return (data.tiere||[]).some(k => {
+    if(normTvd(k.mutterTvd) !== mutterN) return false;
+    if(!k.gebDatum) return false;
+    const gebISO = toISO(k.gebDatum);
+    if(!gebISO) return false;
+    const gebDate = new Date(gebISO);
+    if(isNaN(gebDate)) return false;
+    const diffTage = Math.abs((gebDate - ktDate) / 86400000);
+    return diffTage <= 30;
+  });
+}
+
 function alpBadge(alp){
   if(!alp) return '';
   const short = {'Portein+':'P+','Sarn+':'S+','Merla+':'M+','Portein':'P','Sarn':'S','Merla':'M','Portein-':'P-'}[alp]||alp;
@@ -823,10 +847,20 @@ function renderTiere(){
       const mutter = findTier(t.mutterTvd);
       if(mutter) verbindung = '<div style="font-size:12px;color:var(--green);margin-top:3px">↑ Mutter: '+esc(mutter.name||mutter.tvd)+'</div>';
     } else if(kat!=='Kalb'){
-      const kaelber = data.tiere.filter(k => normTvd(k.mutterTvd)===normTvd(t.tvd) && gveKategorie(k)==='Kalb' && !k.abgang);
+      // Nur lebende Kaelber (kein abgang, nicht geschlachtet) - mit Nummer und Name anzeigen
+      const kaelber = data.tiere.filter(k =>
+        normTvd(k.mutterTvd)===normTvd(t.tvd) &&
+        gveKategorie(k)==='Kalb' &&
+        !k.abgang &&
+        !istGeschlachtet(k.tvd)
+      );
       if(kaelber.length){
-        const namen = kaelber.map(k=>esc(k.name||k.tvd)).join(', ');
-        verbindung = '<div style="font-size:12px;color:var(--blue);margin-top:3px">↓ Kalb'+(kaelber.length>1?'er':'')+' ('+kaelber.length+'): '+namen+'</div>';
+        const eintraege = kaelber.map(k => {
+          const nm = esc(k.name||'');
+          const tv = esc(k.tvd||'');
+          return nm && tv ? nm+' ('+tv+')' : (nm || tv);
+        }).join(', ');
+        verbindung = '<div style="font-size:12px;color:var(--blue);margin-top:3px">↓ Kalb'+(kaelber.length>1?'er':'')+' ('+kaelber.length+'): '+eintraege+'</div>';
       }
     }
     // Erwarteter Kalbetermin (nächster, Datum in der Zukunft, TU nicht 'nicht trächtig')
@@ -839,6 +873,7 @@ function renderTiere(){
           .map(b => Object.assign({}, b, { _ktISO: toISO(b.kalbetermin) }))
           .filter(b => b._ktISO && b._ktISO >= heuteISO)
           .filter(b => (b.tuResult||'').toLowerCase() !== 'nicht trächtig')
+          .filter(b => !besamungAbgeschlossen(b, t.tvd))
           .sort((a,b)=>a._ktISO.localeCompare(b._ktISO));
         if(zukunft.length){
           const kt = zukunft[0];
@@ -882,6 +917,7 @@ function showTierDetail(idx){
         .map(b => Object.assign({}, b, { _ktISO: toISO(b.kalbetermin) }))
         .filter(b => b._ktISO && b._ktISO >= heuteISO)
         .filter(b => (b.tuResult||'').toLowerCase() !== 'nicht trächtig')
+        .filter(b => !besamungAbgeschlossen(b, t.tvd))
         .sort((a,b)=>a._ktISO.localeCompare(b._ktISO));
       if(zukunft.length){
         const kt = zukunft[0];
@@ -898,13 +934,17 @@ function showTierDetail(idx){
       }
     }
   } catch(err) { /* robust bei fehlerhaften Daten */ }
-  const besaHtml = besas.length ? besas.slice(0,5).map(b =>
-    '<div style="border-left:3px solid '+(b.nurBrunst?'var(--orange)':'var(--blue)')+';padding:6px 10px;margin-bottom:6px;background:var(--gray);border-radius:4px;">'+
-    '<div style="font-size:13px;font-weight:600">'+deCH(b.datum)+(b.nurBrunst?' – 🔴 Brunst':' – '+esc(b.stier||'?'))+'</div>'+
-    (b.tuResult?'<div style="font-size:12px;color:var(--text2)">TU: '+esc(b.tuResult)+'</div>':'')+
-    (b.kalbetermin?'<div style="font-size:12px;color:var(--text2)">Kalbe: '+deCH(b.kalbetermin)+'</div>':'')+
-    '</div>'
-  ).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge</div>';
+  const besaHtml = besas.length ? besas.slice(0,5).map(b => {
+    const abgeschlossen = besamungAbgeschlossen(b, t.tvd);
+    const farbe = abgeschlossen ? 'var(--green)' : (b.nurBrunst?'var(--orange)':'var(--blue)');
+    const stierText = b.nurBrunst?' – 🔴 Brunst':' – '+esc(b.stier||'?');
+    const abgeschlossenBadge = abgeschlossen ? ' <span style="font-size:11px;color:var(--green);font-weight:600">✓ abgeschlossen</span>' : '';
+    return '<div style="border-left:3px solid '+farbe+';padding:6px 10px;margin-bottom:6px;background:var(--gray);border-radius:4px;'+(abgeschlossen?'opacity:.7':'')+'">'+
+      '<div style="font-size:13px;font-weight:600">'+deCH(b.datum)+stierText+abgeschlossenBadge+'</div>'+
+      (b.tuResult?'<div style="font-size:12px;color:var(--text2)">TU: '+esc(b.tuResult)+'</div>':'')+
+      (b.kalbetermin?'<div style="font-size:12px;color:var(--text2)">Kalbe: '+deCH(b.kalbetermin)+'</div>':'')+
+      '</div>';
+  }).join('') : '<div style="color:var(--text2);font-size:13px">Noch keine Einträge</div>';
 
   const alpOptions = ['','Portein+','Sarn+','Merla+','Portein','Sarn','Merla','Portein-']
     .map(a => '<option value="'+a+'"'+(t.alp===a?' selected':'')+'>'+(a||'—')+'</option>').join('');
@@ -933,7 +973,8 @@ function showTierDetail(idx){
       '</div>';
     }
   }
-  const kaelber = data.tiere.filter(k => normTvd(k.mutterTvd)===normTvd(t.tvd) && !k.abgang);
+  // Nur lebende Nachkommen anzeigen - geschlachtete Tiere und Tiere mit Abgang werden ausgeblendet
+  const kaelber = data.tiere.filter(k => normTvd(k.mutterTvd)===normTvd(t.tvd) && !k.abgang && !istGeschlachtet(k.tvd));
   if(kaelber.length){
     verwandtHtml += '<div style="font-size:12px;color:var(--text2);margin:8px 0 4px">↓ Nachkommen ('+kaelber.length+')</div>';
     kaelber.forEach(k => {
@@ -1817,6 +1858,9 @@ function computeTermine(){
     if(!b.datum) return;
     const tier = findTier(b.tvd);
     const name = tier?.name || b.tvd;
+    // Wenn die Kalbung bereits stattgefunden hat (Kalb mit passendem Geburtsdatum vorhanden),
+    // werden keine Brunst-, TU- oder Kalbe-Termine aus dieser Besamung mehr eingeblendet.
+    if(besamungAbgeschlossen(b, b.tvd)) return;
     // Brunst-Fenster ±2 Tage um Tag 21
     if(!b.tuResult){
       [19,20,21,22,23].forEach(off => {
