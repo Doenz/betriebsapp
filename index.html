@@ -81,7 +81,7 @@ body{
 /* Forms */
 .field{margin-bottom:12px}
 .field label{display:block;font-size:13px;color:var(--text2);margin-bottom:4px;font-weight:500}
-.field input,.field select,.field textarea{
+.field input:not([type="checkbox"]),.field select,.field textarea{
   width:100%;padding:12px;font-size:16px;border:1px solid var(--border);
   border-radius:8px;background:#fff;color:var(--text);
   -webkit-appearance:none;appearance:none;
@@ -214,6 +214,8 @@ body{
         <input type="text" id="tiereSearch" placeholder="Suche nach Name oder TVD..." oninput="renderTiere()">
       </div>
       <div class="chips" id="tiereChips"></div>
+      <div class="chips" id="tiereGruppenChips" style="margin-top:4px;"></div>
+      <div class="chips" id="tiereBesamtChips" style="margin-top:4px;"></div>
       <div id="tiereList"></div>
     </div>
 
@@ -357,6 +359,8 @@ let data = {
 };
 let currentScreen = 'tiere';
 let tiereFilter = 'alle';
+let tiereGruppeFilter = '';
+let tiereBesamtFilter = 'alle';
 let kalFilter = 'alle';
 let behFilter = 'offen';
 
@@ -799,7 +803,7 @@ function klauenverbandBadge(tvd){
 }
 
 function renderTiere(){
-  // Filter chips
+  // Filter chips – Kategorie/Alp
   const chipsHtml = [
     {k:'alle', l:'Alle'},
     {k:'kuh', l:'Kühe'},
@@ -811,16 +815,46 @@ function renderTiere(){
   ].map(c => '<button class="chip'+(tiereFilter===c.k?' active':'')+'" onclick="setTiereFilter(\''+c.k+'\')">'+c.l+'</button>').join('');
   $('#tiereChips').innerHTML = chipsHtml;
 
+  // Filter chips – Gruppen (dynamisch aus Tierdaten)
+  const alleGruppen = [...new Set((data.tiere||[]).filter(t=>!t.abgang&&!istGeschlachtet(t.tvd)).map(t=>t.gruppe).filter(Boolean))].sort();
+  const gruppenChips = '<button class="chip'+(tiereGruppeFilter===''?' active':'')+'" onclick="setTiereGruppeFilter(\'\')">Alle Gruppen</button>' +
+    alleGruppen.map(g => '<button class="chip'+(tiereGruppeFilter===g?' active':'')+'" onclick="setTiereGruppeFilter(\''+esc(g)+'\')">'+esc(g)+'</button>').join('');
+  $('#tiereGruppenChips').innerHTML = gruppenChips;
+
+  // Filter chips – Besamungsstatus
+  const besamtChips = [
+    {k:'alle', l:'Alle'},
+    {k:'besamt', l:'🐄 Besamt'},
+    {k:'nichtBesamt', l:'Nicht besamt'}
+  ].map(c => '<button class="chip'+(tiereBesamtFilter===c.k?' active':'')+'" onclick="setTiereBesamtFilter(\''+c.k+'\')">'+c.l+'</button>').join('');
+  $('#tiereBesamtChips').innerHTML = besamtChips;
+
   const q = ($('#tiereSearch').value||'').toLowerCase();
   let list = aktiveTiere();
 
-  // Filter
+  // Filter – Kategorie/Alp
   if(tiereFilter==='kuh') list = list.filter(t=>gveKategorie(t)==='Kuh');
   else if(tiereFilter==='rind') list = list.filter(t=>gveKategorie(t)==='Rind');
   else if(tiereFilter==='kalb') list = list.filter(t=>gveKategorie(t)==='Kalb');
   else if(tiereFilter==='sarn') list = list.filter(t=>(t.alp||'').startsWith('Sarn'));
   else if(tiereFilter==='portein') list = list.filter(t=>(t.alp||'').startsWith('Portein'));
   else if(tiereFilter==='merla') list = list.filter(t=>(t.alp||'').startsWith('Merla'));
+
+  // Filter – Gruppe
+  if(tiereGruppeFilter) list = list.filter(t => (t.gruppe||'') === tiereGruppeFilter);
+
+  // Filter – Besamungsstatus
+  if(tiereBesamtFilter !== 'alle') {
+    const heuteISO = new Date().toISOString().slice(0,10);
+    list = list.filter(t => {
+      const hatAktiveBesam = (data.besamungen||[]).some(b =>
+        normTvd(b.tvd) === normTvd(t.tvd) &&
+        !besamungAbgeschlossen(b, t.tvd) &&
+        (b.tuResult||'').toLowerCase() !== 'nicht trächtig'
+      );
+      return tiereBesamtFilter === 'besamt' ? hatAktiveBesam : !hatAktiveBesam;
+    });
+  }
 
   if(q) list = list.filter(t =>
     (t.name||'').toLowerCase().includes(q) ||
@@ -896,6 +930,15 @@ function renderTiere(){
   }).join('');
 }
 function setTiereFilter(f){ tiereFilter = f; renderTiere(); }
+function setTiereGruppeFilter(g){ tiereGruppeFilter = g; renderTiere(); }
+function setTiereBesamtFilter(f){ tiereBesamtFilter = f; renderTiere(); }
+function bhfKatChanged(){
+  const kat = ($('#bhfKat')||{}).value || '';
+  const beinEl = document.getElementById('bhfBeinField');
+  const euterEl = document.getElementById('bhfEuterviertelField');
+  if(beinEl) beinEl.style.display = ['Klauenprobleme','Panaritium'].includes(kat) ? '' : 'none';
+  if(euterEl) euterEl.style.display = kat === 'Mastitis' ? '' : 'none';
+}
 
 /* ===================================================================
    TIER-DETAIL
@@ -1260,6 +1303,8 @@ function showFallDetail(fallId){
     const nachbeh = n > 0;
     return '<div style="border-left:3px solid var(--'+katC+');padding:8px 10px;margin-bottom:6px;background:var(--gray);border-radius:4px">'+
       '<div style="font-size:13px;font-weight:600">'+deCH(b.datum)+(nachbeh?' · ↻ Nachbeh.':'')+'</div>'+
+      (b.bein?'<div style="font-size:12px;margin-top:2px">🦶 Bein: <strong>'+esc(b.bein)+'</strong></div>':'')+
+      (b.euterviertel?'<div style="font-size:12px;margin-top:2px">🐄 Euterviertel: <strong>'+esc(b.euterviertel)+'</strong></div>':'')+
       (b.behandlung?'<div style="font-size:12px;margin-top:2px">💊 '+esc(b.behandlung)+'</div>':'')+
       (b.tierarzt?'<div style="font-size:12px;color:var(--text2)">👨‍⚕️ '+esc(b.tierarzt)+'</div>':'')+
       (b.kosten?'<div style="font-size:12px;color:var(--text2)">'+b.kosten.toFixed(2)+' CHF</div>':'')+
@@ -1321,7 +1366,23 @@ function showBehForm(opts){
     (nachbehFallId?'<div style="background:var(--orange-l);padding:10px;border-radius:8px;margin-bottom:12px;font-size:13px;color:var(--text2)">↻ Nachbehandlung zu bestehendem Fall</div>':'')+
     '<div class="field"><label>Tier</label><select id="bhfTier"'+(nachbehFallId?' disabled':'')+'>'+tierOpts+'</select></div>'+
     '<div class="field"><label>Datum</label><input type="date" id="bhfDatum" value="'+heute+'"></div>'+
-    '<div class="field"><label>Kategorie</label><select id="bhfKat"'+(nachbehFallId?' disabled':'')+'>'+katOpts.replace('value="'+preKat+'"','value="'+preKat+'" selected')+'</select></div>'+
+    '<div class="field"><label>Kategorie</label><select id="bhfKat" onchange="bhfKatChanged()"'+(nachbehFallId?' disabled':'')+'>'+katOpts.replace('value="'+preKat+'"','value="'+preKat+'" selected')+'</select></div>'+
+    '<div class="field" id="bhfBeinField" style="display:none;"><label>Betroffenes Bein</label>'+
+      '<select id="bhfBein">'+
+        '<option value="">— Bein wählen —</option>'+
+        '<option value="VL">VL (Vorne Links)</option>'+
+        '<option value="VR">VR (Vorne Rechts)</option>'+
+        '<option value="HL">HL (Hinten Links)</option>'+
+        '<option value="HR">HR (Hinten Rechts)</option>'+
+      '</select></div>'+
+    '<div class="field" id="bhfEuterviertelField" style="display:none;"><label>Betroffenes Euterviertel</label>'+
+      '<select id="bhfEuterviertel">'+
+        '<option value="">— Viertel wählen —</option>'+
+        '<option value="VL">VL (Vorne Links)</option>'+
+        '<option value="VR">VR (Vorne Rechts)</option>'+
+        '<option value="HL">HL (Hinten Links)</option>'+
+        '<option value="HR">HR (Hinten Rechts)</option>'+
+      '</select></div>'+
     '<div class="field"><label>Behandlung / Medikament</label><input type="text" id="bhfBeh" placeholder="z.B. Antibiotika, Klauenschnitt..."></div>'+
     '<div class="field"><label>Tierarzt</label><input type="text" id="bhfArzt" placeholder="Name Tierarzt"></div>'+
     '<div class="field"><label>Kosten (CHF)</label><input type="number" id="bhfKosten" step="0.05" inputmode="decimal" placeholder="0.00"></div>'+
@@ -1342,6 +1403,8 @@ function showBehForm(opts){
       '<button class="btn btn-primary" onclick="saveBehMob()">Speichern</button>'+
     '</div>'
   );
+  // Bein/Euterviertel-Felder sofort einblenden falls Kategorie vorbelegt
+  if(preKat) bhfKatChanged();
 }
 
 async function saveBehMob(){
@@ -1381,6 +1444,8 @@ async function saveBehMob(){
     bemerkungen:($('#bhfBem').value||'').trim(),
     verbandAn:  !!($('#bhfVerbandAn') && $('#bhfVerbandAn').checked),
     verbandAb:  !!($('#bhfVerbandAb') && $('#bhfVerbandAb').checked),
+    bein:       (document.getElementById('bhfBein')?.value||'').trim(),
+    euterviertel:(document.getElementById('bhfEuterviertel')?.value||'').trim(),
     fallId, fallAbgeschlossen:false, fallAbschlussDatum:''
   };
   if(!data.behandlungen) data.behandlungen = [];
