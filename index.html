@@ -287,6 +287,15 @@ body{
         <button class="btn btn-outline btn-wide" onclick="switchScreen('notiz')">📝 Notizen</button>
       </div>
       <div class="card">
+        <h2 style="margin:0 0 8px">🏷️ Gruppentypen</h2>
+        <p style="color:var(--text2);font-size:13px;margin-bottom:10px;">Tier-Gruppentypen verwalten (erscheinen in allen Gruppe-Auswahlen).</p>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <input type="text" id="mobNewGruppe" placeholder="Neuer Gruppentyp..." style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;">
+          <button class="btn btn-primary" onclick="mobAddGruppe()" style="white-space:nowrap;">+ Hinzufügen</button>
+        </div>
+        <div id="mobGruppenList"></div>
+      </div>
+      <div class="card">
         <h2 style="margin:0 0 4px">☁️ Cloud-Sync</h2>
         <div id="syncInfo" style="color:var(--text2);font-size:13px;margin-bottom:12px"></div>
         <button class="btn btn-primary btn-wide" onclick="syncNow()" style="margin-bottom:8px">⟳ Jetzt synchronisieren</button>
@@ -353,6 +362,8 @@ let data = {
   felder:[], journal:[], wiesenSettings:null, wiesenEntries:{},
   // Stall-Unterhalt + Allgemeine Notizen (cloud-synchronisiert)
   stallUnterhalt:[], allgemeineNotizen:[],
+  // Gruppentypen
+  gruppenTypen:[],
   // Imkerei
   imkerSettings:null, imkerStaende:[], imkerVoelker:[], imkerArbeiten:[],
   imkerErnte:[], imkerBehandlungen:[], imkerBeobachtungen:[]
@@ -444,6 +455,12 @@ function loadLocal(){
     const raw = localStorage.getItem('betriebsapp_mobile');
     if(raw) data = Object.assign(data, JSON.parse(raw));
   } catch(e){}
+  // Gruppentypen initialisieren falls leer
+  if(!Array.isArray(data.gruppenTypen) || data.gruppenTypen.length === 0)
+    data.gruppenTypen = ['A','I','Merla','Porteineralp 1','Porteineralp 2','Heimweide 1','Heimweide 2'];
+  // Migration: alte Werte ohne Leerzeichen → neue mit Leerzeichen
+  const _GM = {'Heimweide1':'Heimweide 1','Heimweide2':'Heimweide 2','Porteineralp1':'Porteineralp 1','Porteineralp2':'Porteineralp 2'};
+  (data.tiere||[]).forEach(t => { if(t.gruppe && _GM[t.gruppe]) t.gruppe = _GM[t.gruppe]; });
 }
 function saveLocal(){
   try { localStorage.setItem('betriebsapp_mobile', JSON.stringify(data)); } catch(e){}
@@ -993,13 +1010,7 @@ function showTierDetail(idx){
     .map(a => '<option value="'+a+'"'+(t.alp===a?' selected':'')+'>'+(a||'—')+'</option>').join('');
   const gruppenListe = [
     {v:'', l:'—'},
-    {v:'A', l:'A (Stall)'},
-    {v:'I', l:'I (Stall)'},
-    {v:'Merla', l:'Merla'},
-    {v:'Porteineralp1', l:'Porteineralp 1'},
-    {v:'Porteineralp2', l:'Porteineralp 2'},
-    {v:'Heimweide1', l:'Heimweide 1'},
-    {v:'Heimweide2', l:'Heimweide 2'}
+    ...(data.gruppenTypen||[]).slice().sort().map(g=>({v:g, l:g}))
   ];
   const gruppeOptions = gruppenListe
     .map(g => '<option value="'+g.v+'"'+(t.gruppe===g.v?' selected':'')+'>'+g.l+'</option>').join('');
@@ -1413,11 +1424,7 @@ function showBehForm(opts){
 let _jfGruppeRowId = 0;
 
 function jfGruppeOptions(selected) {
-  const tierGruppen = [...new Set(
-    (data.tiere||[]).filter(t => !t.abgang && !istGeschlachtet(t.tvd))
-      .map(t => t.gruppe).filter(Boolean)
-  )].sort();
-  const all = [...new Set(['A','I','Merla','Porteineralp 1','Porteineralp 2','Heimweide 1','Heimweide 2', ...tierGruppen])].sort();
+  const all = (data.gruppenTypen||[]).slice().sort();
   return '<option value="">— Gruppe —</option>' +
     all.map(g => '<option value="'+esc(g)+'"'+(g===selected?' selected':'')+'>'+esc(g)+'</option>').join('');
 }
@@ -1483,52 +1490,20 @@ function jfCollectGruppen() {
 }
 
 function jfWeidenBisChanged() {
-  const bis = document.getElementById('jfWeidenBis')?.value;
-  if(!bis) return;
-  const feldId = document.getElementById('jfFeld')?.value;
-  if(!feldId) return;
-
-  // Bestehende Weide-Einträge für dieses Feld laden
-  const alleEntries = [];
-  Object.keys(data.wiesenEntries||{}).forEach(storeKey => {
-    const sep = storeKey.indexOf('_');
-    if(sep < 0 || storeKey.slice(sep+1) !== feldId) return;
-    (data.wiesenEntries[storeKey]||[]).forEach(e => {
-      if(e.weidenVon && e.weidenAnzahl > 0) alleEntries.push(e);
-    });
-  });
-
-  // Aktuell eingegebene Gruppen als zusätzlichen Eintrag hinzufügen
-  const aktGruppen = jfCollectGruppen();
-  const aktAnzahl = aktGruppen.reduce((s,g) => s + (g.anzahl||0), 0);
+  jfUpdateTotal();
+  const avgEl = document.getElementById('jfWeidenAvg');
+  if(!avgEl) return;
   const von = document.getElementById('jfWeidenVon')?.value;
-  if(von && aktAnzahl > 0) alleEntries.push({ weidenVon: von, weidenBis: bis, weidenAnzahl: aktAnzahl });
-
-  if(!alleEntries.length) return;
-
-  // Gewichteten Durchschnitt berechnen (fehlende weidenBis → aktuelles Bis verwenden)
-  let totalTage = 0, gewSum = 0;
-  alleEntries.forEach(e => {
-    const von2 = new Date(e.weidenVon);
-    const bis2 = new Date(e.weidenBis || bis);
-    if(isNaN(von2) || isNaN(bis2) || bis2 < von2) return;
-    const tage = Math.round((bis2 - von2) / 86400000) + 1;
-    totalTage += tage;
-    gewSum += e.weidenAnzahl * tage;
-  });
-
-  if(totalTage > 0 && gewSum > 0) {
-    const avg = Math.round((gewSum / totalTage) * 10) / 10;
-    const avgEl = document.getElementById('jfWeidenAvg');
-    if(avgEl) {
-      avgEl.style.display = '';
-      avgEl.innerHTML = '📊 <strong>Ø Tiere (gewichtet über '+totalTage+' Tage):</strong> '+avg+
-        ' — wird als Tieranzahl für diesen Eintrag verwendet.';
-    }
-    // Total-Anzeige auf Durchschnitt setzen
-    const totEl = document.getElementById('jfWeidenTotal');
-    if(totEl) totEl.textContent = avg;
-  }
+  const bis = document.getElementById('jfWeidenBis')?.value;
+  if(!von || !bis) { avgEl.style.display = 'none'; return; }
+  const vonD = new Date(von), bisD = new Date(bis);
+  if(isNaN(vonD) || isNaN(bisD) || bisD < vonD) { avgEl.style.display = 'none'; return; }
+  const tage = Math.round((bisD - vonD) / 86400000) + 1;
+  const gruppen = jfCollectGruppen();
+  const total = gruppen.reduce((s,g) => s + (g.anzahl||0), 0);
+  if(total === 0) { avgEl.style.display = 'none'; return; }
+  avgEl.style.display = '';
+  avgEl.innerHTML = '📊 <strong>'+total+' Tiere</strong> über <strong>'+tage+' Tage</strong> ('+deCH(von)+' – '+deCH(bis)+')';
 }
 
 async function saveBehMob(){
@@ -1955,34 +1930,7 @@ async function saveJournal(editStoreKey, editIndex){
     weidenVon: $('#jfWeidenVon').value,
     weidenBis: $('#jfWeidenBis').value,
     weidenGruppen: jfCollectGruppen(),
-    weidenAnzahl: (() => {
-      // Falls Bis gesetzt → gewichteten Durchschnitt als Anzahl verwenden
-      const bis = $('#jfWeidenBis').value;
-      const gruppen = jfCollectGruppen();
-      const aktAnzahl = gruppen.reduce((s,g) => s + (g.anzahl||0), 0);
-      if(!bis) return aktAnzahl;
-      const feldId = $('#jfFeld')?.value;
-      if(!feldId) return aktAnzahl;
-      const alleEntries = [];
-      Object.keys(data.wiesenEntries||{}).forEach(sk => {
-        const sep = sk.indexOf('_');
-        if(sep < 0 || sk.slice(sep+1) !== feldId) return;
-        (data.wiesenEntries[sk]||[]).forEach(e => {
-          if(e.weidenVon && e.weidenAnzahl > 0) alleEntries.push(e);
-        });
-      });
-      const von = $('#jfWeidenVon').value;
-      if(von && aktAnzahl > 0) alleEntries.push({ weidenVon: von, weidenBis: bis, weidenAnzahl: aktAnzahl });
-      if(!alleEntries.length) return aktAnzahl;
-      let totalTage = 0, gewSum = 0;
-      alleEntries.forEach(e => {
-        const v2 = new Date(e.weidenVon), b2 = new Date(e.weidenBis || bis);
-        if(isNaN(v2) || isNaN(b2) || b2 < v2) return;
-        const tage = Math.round((b2 - v2) / 86400000) + 1;
-        totalTage += tage; gewSum += e.weidenAnzahl * tage;
-      });
-      return totalTage > 0 ? Math.round((gewSum / totalTage) * 10) / 10 : aktAnzahl;
-    })(),
+    weidenAnzahl: jfCollectGruppen().reduce((s,g) => s + (g.anzahl||0), 0),
     siloballen: parseInt($('#jfSilo').value)||0,
     belueftungsheu: parseInt($('#jfBelueft').value)||0,
     bodenheu: parseInt($('#jfBoden').value)||0,
@@ -2298,6 +2246,7 @@ function renderMehr(){
   if(la) la.textContent = last ? new Date(parseInt(last,10)||last).toLocaleString('de-CH') : 'nie';
   const v = $('#appVersion');
   if(v) v.textContent = APP_VERSION;
+  renderMobGruppenTypen();
 }
 
 /* ===================================================================
@@ -2565,6 +2514,44 @@ window.addEventListener('unhandledrejection', function(e){ showFatalError('Promi
 // WICHTIG: Wir registrieren NICHT nur einen DOMContentLoaded-Listener,
 // weil das Event möglicherweise schon gefeuert hat (besonders nach
 // Service-Worker-Reloads oder bei langen Scripts). Stattdessen prüfen
+// ============================================================
+// === GRUPPENTYPEN VERWALTUNG (Mobile) ========================
+// ============================================================
+function renderMobGruppenTypen() {
+  const el = document.getElementById('mobGruppenList');
+  if(!el) return;
+  const typen = (data.gruppenTypen||[]).slice().sort();
+  if(!typen.length){ el.innerHTML='<p style="color:var(--text2);font-size:13px;">Keine Gruppentypen erfasst.</p>'; return; }
+  el.innerHTML = typen.map(g =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--gray);">'+
+      '<span style="font-size:14px;">'+esc(g)+'</span>'+
+      '<button onclick="mobDeleteGruppe(\''+esc(g).replace(/'/g,"\\'")+'\')" '+
+        'style="padding:5px 12px;border:none;background:var(--red,#d32f2f);color:#fff;border-radius:6px;font-size:13px;cursor:pointer;">Löschen</button>'+
+    '</div>'
+  ).join('');
+}
+async function mobAddGruppe() {
+  const inp = document.getElementById('mobNewGruppe');
+  const val = (inp.value||'').trim();
+  if(!val){ alert('Bitte einen Namen eingeben.'); return; }
+  if((data.gruppenTypen||[]).includes(val)){ alert('Dieser Gruppentyp existiert bereits.'); return; }
+  if(!data.gruppenTypen) data.gruppenTypen = [];
+  data.gruppenTypen.push(val);
+  inp.value = '';
+  saveLocal();
+  renderMobGruppenTypen();
+  toast('Gruppentyp "'+val+'" gespeichert');
+  try { await cloudPushKey('gruppenTypen'); } catch(e){}
+}
+async function mobDeleteGruppe(g) {
+  if(!confirm('Gruppentyp "'+g+'" wirklich löschen?')) return;
+  data.gruppenTypen = (data.gruppenTypen||[]).filter(x=>x!==g);
+  saveLocal();
+  renderMobGruppenTypen();
+  toast('Gruppentyp gelöscht');
+  try { await cloudPushKey('gruppenTypen'); } catch(e){}
+}
+
 // wir document.readyState und rufen Init direkt auf wenn das DOM
 // bereits bereit ist.
 function initApp(){

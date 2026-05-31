@@ -1,7 +1,7 @@
 /* AUTO-GENERATED — NICHT HÄNDISCH EDITIEREN!
  * Quelle: shared/shared.js
  * Sync:   node dev/sync-shared.js  (läuft auch automatisch vor jedem bump-version)
- * Stand:  2026-05-01T00:00:00.000Z
+ * Stand:  2026-05-31T17:11:32.531Z
  */
 /**
  * Betriebsapp – Shared Module  (MASTER)
@@ -36,6 +36,8 @@
     'felder','journal','wiesenSettings','wiesenEntries',
     // Stall + Notizen (auch auf Mobile verfuegbar)
     'stallUnterhalt','notizen','allgemeineNotizen',
+    // Gruppentypen (verwaltbare Tier-Stallgruppen)
+    'gruppenTypen',
     // Imkerei
     'imkerSettings','imkerStaende','imkerVoelker','imkerArbeiten',
     'imkerErnte','imkerBehandlungen','imkerBeobachtungen'
