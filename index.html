@@ -1880,8 +1880,17 @@ function showJournalForm(preFeldId, editCtx){
         '<button type="button" onclick="jfAddGruppeRow()" style="padding:6px 14px;border:1px solid var(--green);background:transparent;color:var(--green);border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">+ Gruppe</button>'+
       '</div>'+
       '<div id="jfGruppenRows"></div>'+
-      '<div style="font-size:13px;color:var(--text2);margin-top:6px;">Total: <strong id="jfWeidenTotal">—</strong> Tiere</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:6px;">'+
+        'Total: <strong id="jfWeidenTotal">—</strong> Tiere'+
+        '<span style="color:var(--text3);font-size:12px;"> · Bestandesänderung = neuer Eintrag</span>'+
+      '</div>'+
       '<div id="jfWeidenAvg" style="display:none;font-size:12px;color:var(--green);margin-top:6px;padding:8px 10px;background:var(--green-l);border-radius:8px;"></div>'+
+      '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
+        '<label style="font-size:13px;color:var(--text2);">Anzahl ohne Gruppe (Fallback)</label>'+
+        '<input type="number" id="jfWeidenAnzahlFallback" step="1" min="0" inputmode="numeric" placeholder="0"'+
+          ' style="width:100%;padding:10px 8px;font-size:15px;border:1px solid var(--border);border-radius:8px;background:#fff;margin-top:6px;"'+
+          ' title="Nur wenn keine Gruppen erfasst sind">'+
+      '</div>'+
     '</div>'+
     '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🌾 Ernte (Lastwagen / Stück)</h3>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
@@ -1902,10 +1911,14 @@ function showJournalForm(preFeldId, editCtx){
         '</div>')
   );
   // Gruppen-Rows befüllen (nach DOM-Aufbau durch openModal)
+  const _fb = document.getElementById('jfWeidenAnzahlFallback');
+  if(_fb) _fb.value = '';
   if(e.weidenGruppen && e.weidenGruppen.length) {
     e.weidenGruppen.forEach(g => jfAddGruppeRow(g.gruppe, g.anzahl));
-  } else if(e.weidenAnzahl) {
-    jfAddGruppeRow('', e.weidenAnzahl);
+  } else if(!isEdit) {
+    jfAddGruppeRow(); // neue Erfassung: erste leere Zeile
+  } else if(e.weidenAnzahl && _fb) {
+    _fb.value = e.weidenAnzahl; // Legacy-Eintrag: Fallback-Feld
   }
   // Falls beim Editieren schon ein Bis-Datum vorhanden → Avg direkt anzeigen
   if(e.weidenBis) jfWeidenBisChanged();
@@ -1918,6 +1931,9 @@ async function saveJournal(editStoreKey, editIndex){
   if(!feldId){ alert('Feld wählen!'); return; }
   if(!datum){ alert('Datum eingeben!'); return; }
 
+  const _gruppen = jfCollectGruppen();
+  const _fallback = parseInt($('#jfWeidenAnzahlFallback')?.value) || 0;
+
   // ID generieren (damit Edit/Delete in der Haupt-App auch funktioniert)
   const newId = 'e' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   const j = {
@@ -1929,8 +1945,10 @@ async function saveJournal(editStoreKey, editIndex){
     pflege: $('#jfPflege').value,
     weidenVon: $('#jfWeidenVon').value,
     weidenBis: $('#jfWeidenBis').value,
-    weidenGruppen: jfCollectGruppen(),
-    weidenAnzahl: jfCollectGruppen().reduce((s,g) => s + (g.anzahl||0), 0),
+    weidenGruppen: _gruppen,
+    weidenAnzahl: _gruppen.length > 0
+      ? _gruppen.reduce((s,g) => s + (g.anzahl||0), 0)
+      : _fallback,
     siloballen: parseInt($('#jfSilo').value)||0,
     belueftungsheu: parseInt($('#jfBelueft').value)||0,
     bodenheu: parseInt($('#jfBoden').value)||0,
