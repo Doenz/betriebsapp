@@ -331,6 +331,21 @@
   }
 
   // ============ ARBEITEN ============
+  function buildVolkCheckboxes(standId, selectedIds){
+    const voelker = standId ? voelkerAmStand(standId) : [];
+    if(!voelker.length) return '<div style="color:#888;font-size:12px;padding:6px 0;">Keine Völker an diesem Stand</div>';
+    return voelker.map(v=>`
+      <label style="display:block;padding:6px;font-size:14px;">
+        <input type="checkbox" name="maf_volk" value="${v.id}" ${selectedIds.includes(v.id)?'checked':''} style="transform:scale(1.3);margin-right:8px;">
+        ${_esc(volkLabel(v))}${(v.status||'aktiv')!=='aktiv'?' <span style="color:#c00;font-size:11px;">('+_esc(v.status)+')</span>':''}
+      </label>
+    `).join('');
+  }
+  function arbStandChange(){
+    const standId = document.getElementById('maf_standId').value;
+    const container = document.getElementById('maf_volkContainer');
+    if(container) container.innerHTML = buildVolkCheckboxes(standId, []);
+  }
   function renderArbeiten(root){
     const list = (data.imkerArbeiten||[]).slice().sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
     root.innerHTML = `
@@ -338,12 +353,13 @@
       ${list.length ? list.map(a => {
         const st = findStand(a.standId);
         const typLabel = (a.typen && a.typen.length ? a.typen.join(', ') : (a.typ||'-'));
+        const volkStr = (a.volkIds && a.volkIds.length) ? a.volkIds.map(id=>_esc(volkLabel(findVolk(id)))).filter(Boolean).join(', ') : '';
         return `<div class="card" onclick="IMKM.arbForm('${a.id}')" style="cursor:pointer;">
           <div style="display:flex;justify-content:space-between;">
             <div>
               <div style="font-weight:600;font-size:14px;">${_de(a.datum)} · ${_esc(typLabel)}</div>
               <div style="color:#666;font-size:13px;">${_esc(a.beschreibung||'')}</div>
-              <div style="color:#888;font-size:11px;">${_esc(standLabel(st))}</div>
+              <div style="color:#888;font-size:11px;">${_esc(standLabel(st))}${volkStr?' · 🐝 '+volkStr:''}</div>
             </div>
             ${a.arbeitszeitMin?`<div style="font-size:11px;color:#888;">${_esc(a.arbeitszeitMin)} min</div>`:''}
           </div>
@@ -356,12 +372,18 @@
                  : { id:uid(), datum:_iso(new Date()), standId:(data.imkerStaende[0]||{}).id||'', volkIds:[], typen:[], beschreibung:'', arbeitszeitMin:'', createdAt:new Date().toISOString() };
     if(!Array.isArray(a.typen)) a.typen = a.typ ? [a.typ] : [];
     const standOpts = (data.imkerStaende||[]).map(s=>`<option value="${s.id}" ${a.standId===s.id?'selected':''}>${_esc(standLabel(s))}</option>`).join('');
+    const voelkerHtml = buildVolkCheckboxes(a.standId, a.volkIds||[]);
     const typen = arbeitTypen();
     openModal(`
       <h3 style="margin-top:0">${id?'Arbeit':'Neue Arbeit'}</h3>
       <div style="display:grid;gap:8px;">
         <div><label style="font-size:12px;color:#666">Datum</label><input id="maf_datum" type="date" value="${_esc(a.datum||'')}" style="width:100%;padding:8px;font-size:16px;"></div>
-        <div><label style="font-size:12px;color:#666">Stand</label><select id="maf_standId" style="width:100%;padding:8px;font-size:16px;"><option value="">–</option>${standOpts}</select></div>
+        <div><label style="font-size:12px;color:#666">Stand</label><select id="maf_standId" onchange="IMKM.arbStandChange()" style="width:100%;padding:8px;font-size:16px;"><option value="">–</option>${standOpts}</select></div>
+        <div><label style="font-size:12px;color:#666">Völker <span style="color:#888">– leer = ganzer Stand</span></label>
+          <div id="maf_volkContainer" style="background:white;border:1px solid #ddd;padding:6px;border-radius:4px;max-height:140px;overflow:auto;">
+            ${voelkerHtml}
+          </div>
+        </div>
         <div><label style="font-size:12px;color:#666">Typ(en) <span style="color:#888">– mehrere möglich</span></label>
           <div style="background:white;border:1px solid #ddd;padding:6px;border-radius:4px;max-height:160px;overflow:auto;">
             ${typen.map(t => `
@@ -388,7 +410,7 @@
     const obj = {
       id, datum: document.getElementById('maf_datum').value,
       standId: document.getElementById('maf_standId').value,
-      volkIds: exists ? (exists.volkIds||[]) : [],
+      volkIds: Array.from(document.querySelectorAll('input[name="maf_volk"]:checked')).map(c=>c.value),
       typen: typen,
       beschreibung: document.getElementById('maf_beschreibung').value.trim(),
       arbeitszeitMin: document.getElementById('maf_arbeitszeitMin').value,
@@ -660,7 +682,7 @@
     render, ensureData, setSub,
     standForm, standSave, standDelete,
     volkForm, volkSave, volkDelete, volkStandChange, volkTypChange,
-    arbForm, arbSave, arbDelete,
+    arbForm, arbSave, arbDelete, arbStandChange,
     ernteForm, ernteSave, ernteDelete,
     behForm, behSave, behDelete, behMittelChange,
     beoForm, beoSave, beoDelete,

@@ -1750,8 +1750,8 @@ function showFeldDetail(id){
     const sumG = liste.reduce((s,it)=>s+(parseFloat(it.entry.guelle)||0),0);
     const sumM = liste.reduce((s,it)=>s+(parseFloat(it.entry.mist)||0),0);
     const sumSilo = liste.reduce((s,it)=>s+(parseInt(it.entry.siloballen)||0),0);
-    const sumBH = liste.reduce((s,it)=>s+(parseInt(it.entry.belueftungsheu||it.entry.belueftung)||0),0);
-    const sumBod = liste.reduce((s,it)=>s+(parseInt(it.entry.bodenheu)||0),0);
+    const sumBH = liste.reduce((s,it)=>s+(parseFloat(it.entry.belueftungsheu||it.entry.belueftung)||0),0);
+    const sumBod = liste.reduce((s,it)=>s+(parseFloat(it.entry.bodenheu)||0),0);
     const summ = [];
     if(sumG) summ.push(sumG.toFixed(0)+' m³ Gülle');
     if(sumM) summ.push(sumM.toFixed(0)+' m³ Mist');
@@ -1895,8 +1895,8 @@ function showJournalForm(preFeldId, editCtx){
     '<h3 style="margin:16px 0 6px;font-size:14px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🌾 Ernte (Lastwagen / Stück)</h3>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
       '<div class="field"><label>Siloballen (Stk)</label><input type="number" id="jfSilo" step="1" inputmode="numeric" value="'+v(e.siloballen)+'"></div>'+
-      '<div class="field"><label>Belüft.heu (LW)</label><input type="number" id="jfBelueft" step="1" inputmode="numeric" value="'+v(e.belueftungsheu||e.belueftung)+'"></div>'+
-      '<div class="field"><label>Bodenheu (LW)</label><input type="number" id="jfBoden" step="1" inputmode="numeric" value="'+v(e.bodenheu)+'"></div>'+
+      '<div class="field"><label>Belüft.heu (LW)</label><input type="number" id="jfBelueft" step="0.5" inputmode="decimal" value="'+v(e.belueftungsheu||e.belueftung)+'"></div>'+
+      '<div class="field"><label>Bodenheu (LW)</label><input type="number" id="jfBoden" step="0.5" inputmode="decimal" value="'+v(e.bodenheu)+'"></div>'+
     '</div>'+
     '<div class="field"><label>Bemerkung</label><textarea id="jfBem">'+esc(e.bemerkung||'')+'</textarea></div>'+
     (isEdit
@@ -1950,8 +1950,8 @@ async function saveJournal(editStoreKey, editIndex){
       ? _gruppen.reduce((s,g) => s + (g.anzahl||0), 0)
       : _fallback,
     siloballen: parseInt($('#jfSilo').value)||0,
-    belueftungsheu: parseInt($('#jfBelueft').value)||0,
-    bodenheu: parseInt($('#jfBoden').value)||0,
+    belueftungsheu: parseFloat($('#jfBelueft').value)||0,
+    bodenheu: parseFloat($('#jfBoden').value)||0,
     bemerkung: $('#jfBem').value
   };
   if(!data.wiesenEntries) data.wiesenEntries = {};
