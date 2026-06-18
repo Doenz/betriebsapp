@@ -1,7 +1,7 @@
 /* AUTO-GENERATED — NICHT HÄNDISCH EDITIEREN!
  * Quelle: shared/shared.js
  * Sync:   node dev/sync-shared.js  (läuft auch automatisch vor jedem bump-version)
- * Stand:  2026-05-31T17:11:32.531Z
+ * Stand:  2026-06-18T10:45:52.241Z
  */
 /**
  * Betriebsapp – Shared Module  (MASTER)
@@ -38,6 +38,8 @@
     'stallUnterhalt','notizen','allgemeineNotizen',
     // Gruppentypen (verwaltbare Tier-Stallgruppen)
     'gruppenTypen',
+    // Alpen (verwaltbare Liste: Name + Kürzel)
+    'alpen',
     // Imkerei
     'imkerSettings','imkerStaende','imkerVoelker','imkerArbeiten',
     'imkerErnte','imkerBehandlungen','imkerBeobachtungen'
@@ -96,19 +98,17 @@
   }
 
   // ============ ALP ============
+  // Generisch, NICHT mehr an feste Alp-Namen gebunden — die Alpen kommen
+  // aus der Stammliste (data.alpen). Suffix-Konvention: "+" = mit Kalb.
   function stripAlpPlus(a){
     if(!a) return '';
-    if(a === 'Portein+') return 'Portein';
-    if(a === 'Sarn+') return 'Sarn';
-    if(a === 'Merla+') return 'Merla';
-    return a;
+    return a.endsWith('+') ? a.slice(0, -1) : a;
   }
   function addAlpPlus(a){
     if(!a) return '';
-    if(a === 'Portein') return 'Portein+';
-    if(a === 'Sarn') return 'Sarn+';
-    if(a === 'Merla') return 'Merla+';
-    return a;
+    if(a.endsWith('+')) return a;   // schon mit Kalb
+    if(a.endsWith('-')) return a;   // Rind-Markierung -> kein "+"
+    return a + '+';
   }
 
   // ============ DATEN-HELFER (stateful, data als Parameter) ============

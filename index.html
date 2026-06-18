@@ -473,6 +473,23 @@ function getPin(){ return localStorage.getItem('betriebsapp_sync_pin') || ''; }
 function setPin(p){
   if(!p) localStorage.removeItem('betriebsapp_sync_pin');
   else localStorage.setItem('betriebsapp_sync_pin', p);
+  // PIN gewechselt -> abgeleiteten Betrieb verwerfen
+  _betriebCache = null;
+  localStorage.removeItem('betriebsapp_betrieb');
+}
+// Welcher Betrieb gehört zu meinem PIN? Einmal vom Server holen, dann cachen.
+let _betriebCache = null;
+async function getBetrieb(){
+  if(_betriebCache) return _betriebCache;
+  const cached = localStorage.getItem('betriebsapp_betrieb');
+  if(cached){ _betriebCache = cached; return cached; }
+  const r = await cloudFetch('rpc/current_betrieb', { method:'POST', body:'{}' });
+  if(!r.ok) throw new Error('Betrieb konnte nicht bestimmt werden (HTTP '+r.status+')');
+  const b = await r.json();
+  if(!b) throw new Error('PIN nicht erkannt – kein Betrieb zugeordnet');
+  _betriebCache = b;
+  localStorage.setItem('betriebsapp_betrieb', b);
+  return b;
 }
 
 async function setPinInteractive(){
@@ -541,10 +558,11 @@ async function cloudPushKey(key){
   if(key==='wiesenSettings') payload = data[key]||null;
   else if(key==='wiesenEntries') payload = data[key]||{};
   else payload = data[key]||[];
+  const betrieb = await getBetrieb();
   const r = await cloudFetch('betriebsapp_data', {
     method:'POST',
     headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-    body: JSON.stringify([{id:key, payload, updated_by:'mobile'}])
+    body: JSON.stringify([{id:key, betrieb, payload, updated_by:'mobile'}])
   });
   if(!r.ok){ const t = await r.text(); throw new Error('HTTP '+r.status+': '+t); }
   // Nach erfolgreichem Push: lastSyncAt setzen
