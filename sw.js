@@ -1,4 +1,4 @@
-var VERSION = '2026-05-07-kaelber-detail';
+var VERSION = '2026-06-18-1';
 var CACHE_NAME = 'betriebsapp-mobile-' + VERSION;
 
 var APP_SHELL = [

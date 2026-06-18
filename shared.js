@@ -1,7 +1,7 @@
 /* AUTO-GENERATED — NICHT HÄNDISCH EDITIEREN!
  * Quelle: shared/shared.js
  * Sync:   node dev/sync-shared.js  (läuft auch automatisch vor jedem bump-version)
- * Stand:  2026-06-18T10:45:52.241Z
+ * Stand:  2026-06-18T16:03:07.359Z
  */
 /**
  * Betriebsapp – Shared Module  (MASTER)
